@@ -76,6 +76,17 @@ export function AppDataProvider({
     [write]
   );
 
+  // Dev builds only: `globalThis.gymtrackrSeed()` (e.g. from the browser console)
+  // replaces all data with sample history for trying out screens.
+  useEffect(() => {
+    if (!__DEV__ || !ready) return;
+    const g = globalThis as { gymtrackrSeed?: () => Promise<void> };
+    g.gymtrackrSeed = () => write((db) => require('@/lib/sampleData').seedSampleData(db));
+    return () => {
+      delete g.gymtrackrSeed;
+    };
+  }, [ready, write]);
+
   const value = useMemo(() => ({ ...data, ...actions, ready, error }), [data, actions, ready, error]);
 
   return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>;

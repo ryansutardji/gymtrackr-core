@@ -14,6 +14,7 @@ import {
   Figtree_700Bold,
 } from '@expo-google-fonts/figtree';
 import { AppDataProvider, useAppData } from '@/hooks/useAppData';
+import { SelectedDateProvider } from '@/hooks/useSelectedDate';
 import { colors, fonts } from '@/lib/theme';
 
 SplashScreen.preventAutoHideAsync();
@@ -35,7 +36,9 @@ export default function RootLayout() {
 
   return (
     <AppDataProvider>
-      <AppShell />
+      <SelectedDateProvider>
+        <AppShell />
+      </SelectedDateProvider>
     </AppDataProvider>
   );
 }
@@ -69,6 +72,7 @@ function AppShell() {
       <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="workout-edit" />
       </Stack>
     </GestureHandlerRootView>
   );

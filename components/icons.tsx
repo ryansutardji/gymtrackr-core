@@ -30,3 +30,11 @@ export function TrendIcon({ color, size = 22 }: IconProps) {
     </Svg>
   );
 }
+
+export function CheckIcon({ color, size = 18 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" stroke={color} {...stroke} strokeWidth={2.6}>
+      <Path d="M5 12.5l4.5 4.5L19 7.5" />
+    </Svg>
+  );
+}
