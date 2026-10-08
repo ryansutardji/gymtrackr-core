@@ -26,7 +26,7 @@ export function DayCell({ date, selected, isToday, status, onPress, variant, wee
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityState={{ selected }}
+      aria-selected={selected}
       accessibilityLabel={`${formatLongDay(date)}${isToday ? ', today' : ''}${STATUS_LABEL[status]}`}
       onPress={onPress}
       style={s.cell}

@@ -14,6 +14,8 @@ export const colors = {
   sagePressed: '#7bb399',
   destructive: '#e8a29a',
   scrim: 'rgba(5,6,7,.6)',
+  // Unchecked checkbox ring in the add-workout sheet.
+  checkRing: '#5a626a',
   // Text drawn on top of sage fills.
   onSage: '#16191d',
 } as const;

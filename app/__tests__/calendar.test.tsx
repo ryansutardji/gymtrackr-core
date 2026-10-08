@@ -1,11 +1,12 @@
-import { act, fireEvent, screen, within } from '@testing-library/react-native';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 import { renderWithData } from '@/test-utils/renderWithData';
 import { SelectedDateProvider } from '@/hooks/useSelectedDate';
 import * as repo from '@/lib/repo';
 import CalendarScreen from '../(tabs)/index';
 
+const mockPush = jest.fn();
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: jest.fn(), back: jest.fn(), replace: jest.fn() }),
+  useRouter: () => ({ push: mockPush, back: jest.fn(), replace: jest.fn() }),
   useFocusEffect: (effect: () => void | (() => void)) => require('react').useEffect(effect, []),
 }));
 
@@ -107,11 +108,67 @@ describe('Calendar', () => {
     expect(data.logs['2026-10-05'][ids.bench]).toEqual([135, 140]); // other days untouched
   });
 
+  it('tapping a card opens the logger for that day', async () => {
+    mockPush.mockClear();
+    const { ids } = await setup();
+    fireEvent.press(screen.getByRole('button', { name: 'Barbell row, 0 of 3 sets logged' }));
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/logger', params: { date: '2026-10-07', workoutId: ids.row } });
+  });
+
   it('changing day drops the hold state', async () => {
     await setup();
     fireEvent(screen.getByRole('button', { name: 'Bench press, 1 of 2 sets logged' }), 'longPress');
     fireEvent.press(screen.getByRole('button', { name: 'Thursday, October 8, planned' }));
     fireEvent.press(screen.getByRole('button', { name: 'Wednesday, October 7, today, planned' }));
     expect(screen.queryByRole('button', { name: 'Remove Bench press from this day' })).toBeNull();
+  });
+
+  describe('add-workout sheet', () => {
+    it('adds the selected workouts to the day', async () => {
+      const { db, ids } = await setup('2026-10-09'); // Friday, nothing planned
+      fireEvent.press(screen.getByRole('button', { name: '+ Add workout' }));
+      expect(await screen.findByText('Add to Fri, Oct 9')).toBeTruthy();
+
+      const add = screen.getByRole('button', { name: 'Select workouts' });
+      expect(add).toBeDisabled();
+      fireEvent.press(screen.getByRole('checkbox', { name: /^Bench press, 2 × 8 · last top 140 lb/ }));
+      fireEvent.press(screen.getByRole('checkbox', { name: /^Barbell row, 3 × 8$/ }));
+      expect(screen.getByRole('button', { name: 'Add 2 workouts' })).toBeEnabled();
+
+      // Filtering hides rows but keeps the selection.
+      fireEvent.press(screen.getByRole('button', { name: 'back' }));
+      expect(screen.queryByRole('checkbox', { name: /^Bench press/ })).toBeNull();
+      expect(screen.getByRole('button', { name: 'Add 2 workouts' })).toBeTruthy();
+
+      // Untick one.
+      fireEvent.press(screen.getByRole('checkbox', { name: /^Barbell row/ }));
+      await act(async () => {
+        fireEvent.press(screen.getByRole('button', { name: 'Add 1 workout' }));
+      });
+
+      expect(await screen.findByRole('button', { name: 'Bench press, 0 of 2 sets logged' })).toBeTruthy();
+      expect(screen.getByText('0 of 1 done')).toBeTruthy();
+      expect((await repo.loadAll(db)).plans['2026-10-09']).toEqual([ids.bench]);
+    });
+
+    it("dims workouts already on the day and can't select them", async () => {
+      await setup(); // today: bench + row planned
+      fireEvent.press(screen.getByRole('button', { name: '+ Add workout' }));
+      expect(await screen.findByText('Add to today')).toBeTruthy();
+      const bench = screen.getByRole('checkbox', { name: 'Bench press, Already on this day' });
+      expect(bench).toBeDisabled();
+      expect(bench).toBeChecked();
+      fireEvent.press(bench);
+      expect(screen.getByRole('button', { name: 'Select workouts' })).toBeDisabled();
+    });
+
+    it('opens Create after the sheet closes', async () => {
+      mockPush.mockClear();
+      await setup();
+      fireEvent.press(screen.getByRole('button', { name: '+ Add workout' }));
+      fireEvent.press(await screen.findByRole('button', { name: '+ Create new workout' }));
+      await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/workout-edit'));
+      expect(screen.queryByText('Add to today')).toBeNull();
+    });
   });
 });

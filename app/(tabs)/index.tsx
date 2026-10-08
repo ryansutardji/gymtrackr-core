@@ -1,20 +1,23 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, Text, View, StyleSheet } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Screen, ScreenTitle } from '@/components/Screen';
 import { SectionLabel } from '@/components/SectionLabel';
 import { WeekStrip } from '@/components/WeekStrip';
 import { MonthGrid } from '@/components/MonthGrid';
 import { WorkoutCard } from '@/components/WorkoutCard';
+import { AddWorkoutSheet, type SheetFilter } from '@/components/AddWorkoutSheet';
 import { useAppData } from '@/hooks/useAppData';
 import { useSelectedDate } from '@/hooks/useSelectedDate';
-import { dayStatus, dayWorkouts, doneCount, isComplete } from '@/lib/derive';
+import { activeWorkouts, dayStatus, dayWorkouts, doneCount, isComplete } from '@/lib/derive';
 import { formatLongDay, formatShortDay, parseKey, todayKey } from '@/lib/dates';
+import { confirmFeedback } from '@/lib/haptics';
 import { colors, fonts } from '@/lib/theme';
 import type { DateKey } from '@/lib/types';
 
 export default function CalendarScreen() {
-  const { workouts, plans, logs, removeFromDay } = useAppData();
+  const router = useRouter();
+  const { workouts, plans, logs, removeFromDay, addToPlan } = useAppData();
   const { selectedDate, setSelectedDate } = useSelectedDate();
   const today = todayKey();
   const isToday = selectedDate === today;
@@ -24,6 +27,16 @@ export default function CalendarScreen() {
   // Workout id in the press-and-hold (delete) state, if any.
   const [heldId, setHeldId] = useState<string | null>(null);
 
+  // Add-workout sheet. Selection lives here so it survives a trip to the Create screen.
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetSelection, setSheetSelection] = useState<string[]>([]);
+  const [sheetFilter, setSheetFilter] = useState<SheetFilter>('all');
+  // Set while the Create screen is open from the sheet: the workout ids that existed before.
+  const createSnapshot = useRef<Set<string> | null>(null);
+  const pendingCreate = useRef(false);
+  const latestWorkouts = useRef(workouts);
+  latestWorkouts.current = workouts;
+
   const data = useMemo(() => ({ workouts, plans, logs }), [workouts, plans, logs]);
   const statusOf = useCallback((d: DateKey) => dayStatus(data, d), [data]);
   const planned = dayWorkouts(data, selectedDate);
@@ -32,6 +45,21 @@ export default function CalendarScreen() {
   // The hold state belongs to one card on one day — drop it when either changes.
   useEffect(() => setHeldId(null), [selectedDate]);
   useFocusEffect(useCallback(() => () => setHeldId(null), []));
+
+  // Back from "Create new workout": reopen the sheet with the new workout ticked.
+  useFocusEffect(
+    useCallback(() => {
+      const before = createSnapshot.current;
+      if (!before) return;
+      createSnapshot.current = null;
+      const created = activeWorkouts(latestWorkouts.current)
+        .map((w) => w.id)
+        .filter((id) => !before.has(id));
+      setSheetSelection((sel) => [...sel, ...created.filter((id) => !sel.includes(id))]);
+      setSheetFilter('all');
+      setSheetOpen(true);
+    }, [])
+  );
 
   const selectDay = (d: DateKey) => {
     setSelectedDate(d);
@@ -48,12 +76,47 @@ export default function CalendarScreen() {
     setViewMonth({ year: d.getFullYear(), month: d.getMonth() });
   };
 
-  const onCardPress = (_workoutId: string) => {
+  const onCardPress = (workoutId: string) => {
     if (heldId) {
       setHeldId(null);
       return;
     }
-    // Opening the logger arrives in Milestone 5.
+    router.push({ pathname: '/logger', params: { date: selectedDate, workoutId } });
+  };
+
+  const onCardLongPress = (workoutId: string) => {
+    confirmFeedback();
+    setHeldId(workoutId);
+  };
+
+  const openSheet = () => {
+    setHeldId(null);
+    setSheetSelection([]);
+    setSheetFilter('all');
+    setSheetOpen(true);
+  };
+
+  const toggleInSheet = (id: string) =>
+    setSheetSelection((sel) => (sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id]));
+
+  const addSelected = async () => {
+    if (!sheetSelection.length) return;
+    setSheetOpen(false);
+    await addToPlan(selectedDate, sheetSelection);
+    setSheetSelection([]);
+  };
+
+  // Close the sheet first; open Create once it has slid away (onSheetClosed).
+  const createFromSheet = () => {
+    pendingCreate.current = true;
+    setSheetOpen(false);
+  };
+
+  const onSheetClosed = () => {
+    if (!pendingCreate.current) return;
+    pendingCreate.current = false;
+    createSnapshot.current = new Set(workouts.map((w) => w.id));
+    router.push('/workout-edit');
   };
 
   const onDelete = async (workoutId: string) => {
@@ -105,14 +168,13 @@ export default function CalendarScreen() {
             done={doneCount(logs, selectedDate, w.id)}
             held={heldId === w.id}
             onPress={() => onCardPress(w.id)}
-            onLongPress={() => setHeldId(w.id)}
+            onLongPress={() => onCardLongPress(w.id)}
             onDelete={() => onDelete(w.id)}
           />
         ))}
         <Pressable
           accessibilityRole="button"
-          // Opens the add-workout sheet in Milestone 4.
-          onPress={() => setHeldId(null)}
+          onPress={openSheet}
           style={({ pressed }) => [styles.addButton, pressed && { backgroundColor: colors.surface }]}
         >
           <Text style={styles.addText}>+ Add workout</Text>
@@ -120,6 +182,22 @@ export default function CalendarScreen() {
       </View>
 
       <Text style={styles.hint}>Tap to log · press and hold to remove</Text>
+
+      <AddWorkoutSheet
+        visible={sheetOpen}
+        title={`Add to ${isToday ? 'today' : formatShortDay(selectedDate)}`}
+        workouts={workouts}
+        logs={logs}
+        plannedIds={planned.map((w) => w.id)}
+        selection={sheetSelection}
+        filter={sheetFilter}
+        onToggle={toggleInSheet}
+        onFilter={setSheetFilter}
+        onAdd={addSelected}
+        onCreateNew={createFromSheet}
+        onClose={() => setSheetOpen(false)}
+        onClosed={onSheetClosed}
+      />
     </Screen>
   );
 }

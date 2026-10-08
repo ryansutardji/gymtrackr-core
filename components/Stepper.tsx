@@ -29,7 +29,7 @@ function StepButton({ symbol, label, disabled, onPress }: { symbol: string; labe
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ disabled }}
+      aria-disabled={disabled}
       disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [styles.button, pressed && { backgroundColor: colors.line }, disabled && { opacity: 0.4 }]}
