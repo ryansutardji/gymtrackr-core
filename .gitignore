@@ -1,1 +1,4 @@
 resources/
+.DS_Store
+DECISIONS.md
+TODO.md
