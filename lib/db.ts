@@ -16,7 +16,7 @@ export const DB_NAME = 'gymtrackr.db';
 
 // Each entry upgrades the database by one version. Never edit a shipped step —
 // add a new one. `PRAGMA user_version` records how many have run.
-const MIGRATIONS: string[] = [
+export const MIGRATIONS: string[] = [
   `
   CREATE TABLE workouts (
     id TEXT PRIMARY KEY NOT NULL,
@@ -40,6 +40,35 @@ const MIGRATIONS: string[] = [
     PRIMARY KEY (date, workout_id, set_index)
   );
   CREATE INDEX set_logs_workout ON set_logs (workout_id, date);
+  `,
+  // 2: Plans (saved groups of workouts, called routines in code) + weekly repeats.
+  `
+  CREATE TABLE routines (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    deleted_at TEXT
+  );
+  CREATE TABLE routine_workouts (
+    routine_id TEXT NOT NULL REFERENCES routines(id),
+    workout_id TEXT NOT NULL REFERENCES workouts(id),
+    position INTEGER NOT NULL,
+    PRIMARY KEY (routine_id, workout_id)
+  );
+  CREATE TABLE routine_schedules (
+    id TEXT PRIMARY KEY NOT NULL,
+    routine_id TEXT NOT NULL REFERENCES routines(id),
+    weekday INTEGER NOT NULL,
+    start_date TEXT NOT NULL,
+    ended_on TEXT,
+    materialized_through TEXT
+  );
+  CREATE TABLE day_exclusions (
+    date TEXT NOT NULL,
+    workout_id TEXT NOT NULL REFERENCES workouts(id),
+    PRIMARY KEY (date, workout_id)
+  );
+  ALTER TABLE plan_entries ADD COLUMN routine_id TEXT REFERENCES routines(id);
   `,
 ];
 

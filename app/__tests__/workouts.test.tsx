@@ -30,6 +30,7 @@ describe('Workouts tab', () => {
       await repo.logSet(db, '2026-10-01', bench.id, 1, 145);
     });
 
+    fireEvent.press(await screen.findByRole('button', { name: 'Workouts' }));
     expect(await screen.findByText('Bench press')).toBeTruthy();
     expect(screen.getByText('chest · 3 × 8')).toBeTruthy();
     expect(screen.getByText('145 lb')).toBeTruthy();
@@ -47,6 +48,8 @@ describe('Workouts tab', () => {
 
   it('shows a first-run hint when there are no workouts at all', async () => {
     await renderWithData(<WorkoutsScreen />);
+    expect(await screen.findByText('No plans yet. Tap + to create one.')).toBeTruthy();
+    fireEvent.press(screen.getByRole('button', { name: 'Workouts' }));
     expect(await screen.findByText('No workouts yet. Tap + to create one.')).toBeTruthy();
   });
 
@@ -55,6 +58,9 @@ describe('Workouts tab', () => {
     await renderWithData(<WorkoutsScreen />, async (db) => {
       id = (await repo.createWorkout(db, { name: 'Bench press', group: 'chest', sets: 3, reps: 8 })).id;
     });
+    fireEvent.press(screen.getByRole('button', { name: 'New plan' }));
+    expect(mockPush).toHaveBeenLastCalledWith('/plan-edit');
+    fireEvent.press(screen.getByRole('button', { name: 'Workouts' }));
     fireEvent.press(screen.getByRole('button', { name: 'New workout' }));
     expect(mockPush).toHaveBeenLastCalledWith('/workout-edit');
     fireEvent.press(await screen.findByRole('button', { name: 'Edit Bench press' }));

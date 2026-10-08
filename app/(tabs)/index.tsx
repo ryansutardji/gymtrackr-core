@@ -6,18 +6,19 @@ import { SectionLabel } from '@/components/SectionLabel';
 import { WeekStrip } from '@/components/WeekStrip';
 import { MonthGrid } from '@/components/MonthGrid';
 import { WorkoutCard } from '@/components/WorkoutCard';
-import { AddWorkoutSheet, type SheetFilter } from '@/components/AddWorkoutSheet';
+import { AddWorkoutSheet, type SheetFilter, type SheetMode } from '@/components/AddWorkoutSheet';
 import { useAppData } from '@/hooks/useAppData';
 import { useSelectedDate } from '@/hooks/useSelectedDate';
-import { activeWorkouts, dayStatus, dayWorkouts, doneCount, isComplete } from '@/lib/derive';
-import { formatLongDay, formatShortDay, parseKey, todayKey } from '@/lib/dates';
+import { activeRoutines, activeWorkouts, dayGroups, dayStatus, doneCount, isComplete } from '@/lib/derive';
+import { formatLongDay, formatShortDay, parseKey, todayKey, weekdayName, weekdayOf } from '@/lib/dates';
 import { confirmFeedback } from '@/lib/haptics';
 import { colors, fonts } from '@/lib/theme';
 import type { DateKey } from '@/lib/types';
 
 export default function CalendarScreen() {
   const router = useRouter();
-  const { workouts, plans, logs, removeFromDay, addToPlan } = useAppData();
+  const app = useAppData();
+  const { workouts, logs, removeFromDay, addToPlan, addRoutineToDay } = app;
   const { selectedDate, setSelectedDate } = useSelectedDate();
   const today = todayKey();
   const isToday = selectedDate === today;
@@ -31,15 +32,23 @@ export default function CalendarScreen() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetSelection, setSheetSelection] = useState<string[]>([]);
   const [sheetFilter, setSheetFilter] = useState<SheetFilter>('all');
+  const [sheetMode, setSheetMode] = useState<SheetMode>('Workouts');
+  const [sheetPlanId, setSheetPlanId] = useState<string | null>(null);
+  const [sheetRepeat, setSheetRepeat] = useState(false);
   // Set while the Create screen is open from the sheet: the workout ids that existed before.
   const createSnapshot = useRef<Set<string> | null>(null);
   const pendingCreate = useRef(false);
   const latestWorkouts = useRef(workouts);
   latestWorkouts.current = workouts;
 
-  const data = useMemo(() => ({ workouts, plans, logs }), [workouts, plans, logs]);
+  const { plans, routines, schedules, exclusions, planSources } = app;
+  const data = useMemo(
+    () => ({ workouts, plans, logs, routines, schedules, exclusions, planSources }),
+    [workouts, plans, logs, routines, schedules, exclusions, planSources]
+  );
   const statusOf = useCallback((d: DateKey) => dayStatus(data, d), [data]);
-  const planned = dayWorkouts(data, selectedDate);
+  const groups = dayGroups(data, selectedDate);
+  const planned = groups.flatMap((g) => g.workouts);
   const completeCount = planned.filter((w) => isComplete(logs, selectedDate, w)).length;
 
   // The hold state belongs to one card on one day — drop it when either changes.
@@ -93,6 +102,9 @@ export default function CalendarScreen() {
     setHeldId(null);
     setSheetSelection([]);
     setSheetFilter('all');
+    setSheetMode('Workouts');
+    setSheetPlanId(null);
+    setSheetRepeat(false);
     setSheetOpen(true);
   };
 
@@ -102,8 +114,16 @@ export default function CalendarScreen() {
   const addSelected = async () => {
     if (!sheetSelection.length) return;
     setSheetOpen(false);
+    confirmFeedback();
     await addToPlan(selectedDate, sheetSelection);
     setSheetSelection([]);
+  };
+
+  const addPlan = async () => {
+    if (!sheetPlanId) return;
+    setSheetOpen(false);
+    confirmFeedback();
+    await addRoutineToDay(selectedDate, sheetPlanId, sheetRepeat);
   };
 
   // Close the sheet first; open Create once it has slid away (onSheetClosed).
@@ -161,23 +181,33 @@ export default function CalendarScreen() {
       </View>
 
       <View style={styles.cards}>
-        {planned.map((w) => (
-          <WorkoutCard
-            key={w.id}
-            workout={w}
-            done={doneCount(logs, selectedDate, w)}
-            held={heldId === w.id}
-            onPress={() => onCardPress(w.id)}
-            onLongPress={() => onCardLongPress(w.id)}
-            onDelete={() => onDelete(w.id)}
-          />
+        {groups.map((g) => (
+          <View key={g.routine?.id ?? 'single'} style={styles.group}>
+            {g.routine && (
+              <Text style={styles.groupLabel} numberOfLines={1}>
+                <Text style={{ color: colors.sage }}>{g.routine.name}</Text>
+                {g.repeatWeekday != null && ` · repeats ${weekdayName(g.repeatWeekday)}s`}
+              </Text>
+            )}
+            {g.workouts.map((w) => (
+              <WorkoutCard
+                key={w.id}
+                workout={w}
+                done={doneCount(logs, selectedDate, w)}
+                held={heldId === w.id}
+                onPress={() => onCardPress(w.id)}
+                onLongPress={() => onCardLongPress(w.id)}
+                onDelete={() => onDelete(w.id)}
+              />
+            ))}
+          </View>
         ))}
         <Pressable
           accessibilityRole="button"
           onPress={openSheet}
           style={({ pressed }) => [styles.addButton, pressed && { backgroundColor: colors.surface }]}
         >
-          <Text style={styles.addText}>+ Add workout</Text>
+          <Text style={styles.addText}>+ Add workout or plan</Text>
         </Pressable>
       </View>
 
@@ -197,6 +227,17 @@ export default function CalendarScreen() {
         onCreateNew={createFromSheet}
         onClose={() => setSheetOpen(false)}
         onClosed={onSheetClosed}
+        plans={{
+          mode: sheetMode,
+          onMode: setSheetMode,
+          routines: activeRoutines(app.routines),
+          selectedId: sheetPlanId,
+          onSelect: setSheetPlanId,
+          repeat: sheetRepeat,
+          onRepeat: setSheetRepeat,
+          weekday: weekdayName(weekdayOf(selectedDate)),
+          onAddPlan: addPlan,
+        }}
       />
     </Screen>
   );
@@ -238,6 +279,8 @@ const styles = StyleSheet.create({
   },
   summary: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted },
   cards: { gap: 10, marginTop: 10 },
+  group: { gap: 10 },
+  groupLabel: { fontFamily: fonts.semibold, fontSize: 12, color: colors.muted, marginBottom: -2 },
   addButton: {
     height: 52,
     borderRadius: 18,

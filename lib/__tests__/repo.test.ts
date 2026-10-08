@@ -15,7 +15,7 @@ describe('migrate', () => {
   it('is safe to run again on an up-to-date database', async () => {
     await migrate(db);
     const v = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version', []);
-    expect(v?.user_version).toBe(1);
+    expect(v?.user_version).toBe(2);
   });
 });
 

@@ -126,7 +126,7 @@ describe('Calendar', () => {
   describe('add-workout sheet', () => {
     it('adds the selected workouts to the day', async () => {
       const { db, ids } = await setup('2026-10-09'); // Friday, nothing planned
-      fireEvent.press(screen.getByRole('button', { name: '+ Add workout' }));
+      fireEvent.press(screen.getByRole('button', { name: '+ Add workout or plan' }));
       expect(await screen.findByText('Add to Fri, Oct 9')).toBeTruthy();
 
       const add = screen.getByRole('button', { name: 'Select workouts' });
@@ -153,7 +153,7 @@ describe('Calendar', () => {
 
     it("dims workouts already on the day and can't select them", async () => {
       await setup(); // today: bench + row planned
-      fireEvent.press(screen.getByRole('button', { name: '+ Add workout' }));
+      fireEvent.press(screen.getByRole('button', { name: '+ Add workout or plan' }));
       expect(await screen.findByText('Add to today')).toBeTruthy();
       const bench = screen.getByRole('checkbox', { name: 'Bench press, Already on this day' });
       expect(bench).toBeDisabled();
@@ -165,7 +165,7 @@ describe('Calendar', () => {
     it('opens Create after the sheet closes', async () => {
       mockPush.mockClear();
       await setup();
-      fireEvent.press(screen.getByRole('button', { name: '+ Add workout' }));
+      fireEvent.press(screen.getByRole('button', { name: '+ Add workout or plan' }));
       fireEvent.press(await screen.findByRole('button', { name: '+ Create new workout' }));
       await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/workout-edit'));
       expect(screen.queryByText('Add to today')).toBeNull();

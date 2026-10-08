@@ -3,6 +3,7 @@ import { Pressable, Text, View, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Screen, ScreenTitle } from '@/components/Screen';
 import { SectionLabel } from '@/components/SectionLabel';
+import { Segmented } from '@/components/Segmented';
 import { ProgressChart } from '@/components/ProgressChart';
 import { useAppData } from '@/hooks/useAppData';
 import { useSelectedDate } from '@/hooks/useSelectedDate';
@@ -16,15 +17,15 @@ import type { DateKey } from '@/lib/types';
 
 export default function StatsScreen() {
   const router = useRouter();
-  const { workouts, plans, logs } = useAppData();
+  const { workouts, logs } = useAppData();
   const { setSelectedDate } = useSelectedDate();
 
   const logged = useMemo(() => {
-    const list = loggedWorkouts({ workouts, plans, logs });
+    const list = loggedWorkouts({ workouts, logs });
     // Most recently trained first, so the default is what you just did.
     const last = (id: string) => allSessions(logs, id).at(-1)?.date ?? '';
     return list.sort((a, b) => last(b.id).localeCompare(last(a.id)));
-  }, [workouts, plans, logs]);
+  }, [workouts, logs]);
 
   const [workoutId, setWorkoutId] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -98,22 +99,17 @@ export default function StatsScreen() {
       </View>
 
       {/* Range */}
-      <View style={styles.ranges}>
-        {RANGES.map((r) => (
-          <Pressable
-            key={r}
-            accessibilityRole="button"
-            aria-selected={r === range}
-            onPress={() => {
-              setRange(r);
-              setSelectedSession(null);
-            }}
-            style={[styles.range, r === range && { backgroundColor: colors.raised }]}
-          >
-            <Text style={[styles.rangeText, { color: r === range ? colors.text : colors.muted }]}>{r}</Text>
-          </Pressable>
-        ))}
-      </View>
+      <Segmented
+        options={RANGES}
+        value={range}
+        onChange={(r) => {
+          setRange(r);
+          setSelectedSession(null);
+        }}
+        height={30}
+        fontSize={12}
+        style={{ marginTop: 10 }}
+      />
 
       {chart && selected && workout ? (
         <>
@@ -246,16 +242,6 @@ const styles = StyleSheet.create({
   },
   menuName: { fontFamily: fonts.semibold, fontSize: 14, color: colors.text },
   menuGroup: { fontFamily: fonts.medium, fontSize: 12, color: colors.muted },
-  ranges: {
-    flexDirection: 'row',
-    gap: 4,
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: 3,
-    marginTop: 10,
-  },
-  range: { flex: 1, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  rangeText: { fontFamily: fonts.semibold, fontSize: 12 },
   setChips: { flexDirection: 'row', gap: 6, marginTop: 8 },
   setChip: { flex: 1, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   setChipText: { fontFamily: fonts.bold, fontSize: 13 },

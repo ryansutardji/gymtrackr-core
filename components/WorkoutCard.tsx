@@ -6,26 +6,45 @@ import type { Workout } from '@/lib/types';
 
 type Props = {
   workout: Workout;
-  done: number;
+  /** Logged sets; omit to hide progress (plan page). */
+  done?: number;
   /** In the press-and-hold state: sage ring and a Delete button instead of progress. */
   held: boolean;
   onPress: () => void;
-  onLongPress: () => void;
+  /** Omit to disable press-and-hold (e.g. a plan's last workout). */
+  onLongPress?: () => void;
   onDelete: () => void;
+  deleteLabel?: string;
+  /** Spoken label for the delete button. */
+  deleteA11yLabel?: string;
+  a11yHint?: string;
 };
 
 export const HOLD_DELAY_MS = 500;
 
-/** A planned workout on the Calendar. Tap → log; press and hold (500 ms) → remove from this day. */
-export function WorkoutCard({ workout, done, held, onPress, onLongPress, onDelete }: Props) {
-  const complete = done >= workout.sets;
+/**
+ * A workout row. On the Calendar: tap → log; press and hold (500 ms) → remove
+ * from this day. On a plan's page: press and hold → remove from the plan.
+ */
+export function WorkoutCard({
+  workout,
+  done,
+  held,
+  onPress,
+  onLongPress,
+  onDelete,
+  deleteLabel = 'Delete',
+  deleteA11yLabel = `Remove ${workout.name} from this day`,
+  a11yHint = 'Tap to log. Press and hold to remove from this day.',
+}: Props) {
+  const complete = done != null && done >= workout.sets;
   return (
     // The card body and the Delete button are siblings, never nested buttons.
     <View style={[styles.card, held && styles.held]}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`${workout.name}, ${done} of ${workout.sets} sets logged`}
-        accessibilityHint="Tap to log. Press and hold to remove from this day."
+        accessibilityLabel={done != null ? `${workout.name}, ${done} of ${workout.sets} sets logged` : workout.name}
+        accessibilityHint={a11yHint}
         onPress={onPress}
         onLongPress={onLongPress}
         delayLongPress={HOLD_DELAY_MS}
@@ -35,7 +54,7 @@ export function WorkoutCard({ workout, done, held, onPress, onLongPress, onDelet
           <Text style={styles.name}>{workout.name}</Text>
           <Text style={styles.meta}>{workoutMeta(workout)}</Text>
         </View>
-        {!held && (
+        {!held && done != null && (
           <View style={styles.progress}>
             {complete && <CheckIcon color={colors.sage} />}
             <Text style={[styles.progressText, { color: complete ? colors.sage : colors.muted }]}>
@@ -47,11 +66,11 @@ export function WorkoutCard({ workout, done, held, onPress, onLongPress, onDelet
       {held && (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`Remove ${workout.name} from this day`}
+          accessibilityLabel={deleteA11yLabel}
           onPress={onDelete}
           style={({ pressed }) => [styles.delete, pressed && { backgroundColor: 'rgba(232,162,154,0.12)' }]}
         >
-          <Text style={styles.deleteText}>Delete</Text>
+          <Text style={styles.deleteText}>{deleteLabel}</Text>
         </Pressable>
       )}
     </View>

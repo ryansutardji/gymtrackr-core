@@ -72,6 +72,7 @@ function AppShell() {
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="workout-edit" />
+        <Stack.Screen name="plan-edit" />
         <Stack.Screen name="logger" />
       </Stack>
     </GestureHandlerRootView>

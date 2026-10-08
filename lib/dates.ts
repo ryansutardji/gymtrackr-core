@@ -29,6 +29,16 @@ export function addDays(k: DateKey, n: number): DateKey {
   return toKey(d);
 }
 
+/** 0 = Sunday … 6 = Saturday. */
+export function weekdayOf(k: DateKey): number {
+  return parseKey(k).getDay();
+}
+
+/** "Thursday" */
+export function weekdayName(weekday: number): string {
+  return LDOW[weekday];
+}
+
 /** Monday of the week containing `k` (weeks are Monday-first). */
 export function startOfWeek(k: DateKey): DateKey {
   return addDays(k, -((parseKey(k).getDay() + 6) % 7));

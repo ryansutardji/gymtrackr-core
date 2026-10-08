@@ -1,22 +1,40 @@
-import { Pressable, ScrollView, Text, View, StyleSheet } from 'react-native';
+import { Pressable, ScrollView, Switch, Text, View, StyleSheet } from 'react-native';
 import { BottomSheet } from './BottomSheet';
-import { Chip } from './Chip';
 import { PrimaryButton } from './PrimaryButton';
-import { activeWorkouts, lastTopSet } from '@/lib/derive';
-import { formatWeight } from '@/lib/format';
+import { Segmented } from './Segmented';
+import { PickFilterChips, WorkoutPickList, pickStyles, type PickFilter } from './WorkoutPickList';
+import { activeWorkouts, routineWorkouts } from '@/lib/derive';
 import { colors, fonts } from '@/lib/theme';
-import { MUSCLE_GROUPS, type Logs, type MuscleGroup, type Workout } from '@/lib/types';
+import type { Logs, Routine, Workout } from '@/lib/types';
 
-export type SheetFilter = 'all' | MuscleGroup;
+export type SheetFilter = PickFilter;
+export type SheetMode = 'Workouts' | 'Plans';
+const MODES: SheetMode[] = ['Workouts', 'Plans'];
+
+/** Calendar only: the Plans tab of the sheet. State lives with the caller. */
+export type SheetPlans = {
+  mode: SheetMode;
+  onMode: (m: SheetMode) => void;
+  /** Active (non-deleted) plans. */
+  routines: Routine[];
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  repeat: boolean;
+  onRepeat: (on: boolean) => void;
+  /** "Thursday" — the selected day's weekday. */
+  weekday: string;
+  onAddPlan: () => void;
+};
 
 type Props = {
   visible: boolean;
-  /** "Add to today" / "Add to Thu, Oct 8" */
+  /** "Add to today" / "Add to Thu, Oct 8" / "Add to Push day" */
   title: string;
   workouts: Workout[];
   logs: Logs;
-  /** Workout ids already planned on the day — shown dimmed and not selectable. */
+  /** Workout ids already on the day (or in the plan) — shown ticked, dimmed and not selectable. */
   plannedIds: string[];
+  plannedLabel?: string;
   selection: string[];
   filter: SheetFilter;
   onToggle: (id: string) => void;
@@ -25,13 +43,15 @@ type Props = {
   onCreateNew: () => void;
   onClose: () => void;
   onClosed?: () => void;
+  plans?: SheetPlans;
 };
 
-/** Multi-select list of workouts to add to the selected day. State lives with the caller. */
+/** Multi-select list of workouts to add to a day or a plan; on the Calendar it can add a whole plan instead. */
 export function AddWorkoutSheet(props: Props) {
-  const { visible, title, workouts, logs, plannedIds, selection, filter } = props;
+  const { visible, title, workouts, logs, plannedIds, selection, filter, plans } = props;
   const list = activeWorkouts(workouts).filter((w) => filter === 'all' || w.group === filter);
   const n = selection.length;
+  const showPlans = plans?.mode === 'Plans';
 
   return (
     <BottomSheet visible={visible} onClose={props.onClose} onClosed={props.onClosed}>
@@ -48,65 +68,120 @@ export function AddWorkoutSheet(props: Props) {
         </Pressable>
       </View>
 
-      <View style={styles.chips}>
-        {(['all', ...MUSCLE_GROUPS] as SheetFilter[]).map((g) => (
-          <Chip
-            key={g}
-            size="xs"
-            label={g}
-            selected={filter === g}
-            inactiveBg={colors.raised}
-            onPress={() => props.onFilter(g)}
-          />
-        ))}
-      </View>
+      {plans && (
+        <Segmented
+          options={MODES}
+          value={plans.mode}
+          onChange={plans.onMode}
+          bg={colors.row}
+          activeBg={colors.line}
+          style={{ marginTop: 12 }}
+        />
+      )}
 
-      <ScrollView style={styles.listScroll} contentContainerStyle={styles.list}>
-        {list.map((w) => {
-          const inPlan = plannedIds.includes(w.id);
-          const checked = inPlan || selection.includes(w.id);
-          const top = lastTopSet(logs, w.id);
-          const meta = inPlan
-            ? 'Already on this day'
-            : `${w.sets} × ${w.reps}${top != null ? ` · last top ${formatWeight(top)}` : ''}`;
-          return (
-            <Pressable
-              key={w.id}
-              accessibilityRole="checkbox"
-              aria-checked={checked}
-              aria-disabled={inPlan}
-              accessibilityLabel={`${w.name}, ${meta}`}
-              disabled={inPlan}
-              onPress={() => props.onToggle(w.id)}
-              style={({ pressed }) => [styles.row, inPlan && { opacity: 0.5 }, pressed && { backgroundColor: colors.raised }]}
-            >
-              <View style={[styles.box, checked ? styles.boxOn : styles.boxOff]}>
-                {checked && <Text style={styles.check}>✓</Text>}
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.name}>{w.name}</Text>
-                <Text style={styles.meta}>{meta}</Text>
-              </View>
-            </Pressable>
-          );
-        })}
-        <Pressable
-          accessibilityRole="button"
-          onPress={props.onCreateNew}
-          style={({ pressed }) => [styles.create, pressed && { backgroundColor: colors.row }]}
-        >
-          <Text style={styles.createText}>+ Create new workout</Text>
-        </Pressable>
+      {showPlans ? (
+        <PlansTab plans={plans} workouts={workouts} plannedIds={plannedIds} />
+      ) : (
+        <>
+          <PickFilterChips filter={filter} onFilter={props.onFilter} />
+          <ScrollView style={styles.listScroll}>
+            <WorkoutPickList
+              workouts={list}
+              logs={logs}
+              lockedIds={plannedIds}
+              lockedLabel={props.plannedLabel ?? 'Already on this day'}
+              selection={selection}
+              onToggle={props.onToggle}
+              onCreateNew={props.onCreateNew}
+            />
+          </ScrollView>
+          <PrimaryButton
+            label={n ? `Add ${n} ${n === 1 ? 'workout' : 'workouts'}` : 'Select workouts'}
+            disabled={!n}
+            onPress={props.onAdd}
+            height={54}
+            style={styles.button}
+          />
+        </>
+      )}
+    </BottomSheet>
+  );
+}
+
+function PlansTab({ plans, workouts, plannedIds }: { plans: SheetPlans; workouts: Workout[]; plannedIds: string[] }) {
+  const selected = plans.routines.find((r) => r.id === plans.selectedId);
+  const members = selected ? routineWorkouts(selected, workouts) : [];
+  const newCount = members.filter((w) => !plannedIds.includes(w.id)).length;
+
+  let label = 'Select a plan';
+  let enabled = false;
+  if (selected) {
+    if (newCount) {
+      label = `Add ${selected.name} · ${newCount} ${newCount === 1 ? 'workout' : 'workouts'}`;
+      enabled = true;
+    } else if (plans.repeat) {
+      label = `Repeat ${selected.name} every ${plans.weekday}`;
+      enabled = true;
+    } else {
+      label = 'Already on this day';
+    }
+  }
+
+  return (
+    <>
+      <ScrollView style={styles.listScroll}>
+        <View style={{ gap: 8 }}>
+          {plans.routines.map((r) => {
+            const on = r.id === plans.selectedId;
+            const ws = routineWorkouts(r, workouts);
+            const meta = on ? ws.map((w) => w.name).join(' · ') : `${ws.length} ${ws.length === 1 ? 'workout' : 'workouts'}`;
+            return (
+              <Pressable
+                key={r.id}
+                accessibilityRole="radio"
+                aria-checked={on}
+                accessibilityLabel={`${r.name}, ${meta}`}
+                onPress={() => plans.onSelect(r.id)}
+                style={({ pressed }) => [
+                  pickStyles.row,
+                  styles.planRow,
+                  on && { borderColor: colors.sage },
+                  pressed && { backgroundColor: colors.raised },
+                ]}
+              >
+                <View style={[styles.radio, on ? styles.radioOn : styles.radioOff]}>
+                  {on && <View style={styles.radioDot} />}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={pickStyles.name}>{r.name}</Text>
+                  <Text style={pickStyles.meta}>{meta}</Text>
+                </View>
+              </Pressable>
+            );
+          })}
+          {!plans.routines.length && (
+            <Text style={styles.empty}>No plans yet. Make one in the Workouts tab.</Text>
+          )}
+        </View>
       </ScrollView>
 
-      <PrimaryButton
-        label={n ? `Add ${n} ${n === 1 ? 'workout' : 'workouts'}` : 'Select workouts'}
-        disabled={!n}
-        onPress={props.onAdd}
-        height={54}
-        style={{ marginTop: 14, borderRadius: 18 }}
-      />
-    </BottomSheet>
+      <View style={styles.repeat}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.repeatTitle}>Repeat every {plans.weekday}</Text>
+          <Text style={styles.repeatSub}>Until you turn it off</Text>
+        </View>
+        <Switch
+          accessibilityLabel={`Repeat every ${plans.weekday}`}
+          value={plans.repeat}
+          onValueChange={plans.onRepeat}
+          trackColor={{ false: colors.line, true: colors.sage }}
+          thumbColor={colors.text}
+          ios_backgroundColor={colors.line}
+        />
+      </View>
+
+      <PrimaryButton label={label} disabled={!enabled} onPress={plans.onAddPlan} height={54} style={styles.button} />
+    </>
   );
 }
 
@@ -122,32 +197,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   closeText: { fontSize: 14, color: colors.text },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 12 },
   listScroll: { flexShrink: 1, minHeight: 120, marginTop: 12 },
-  list: { gap: 8 },
-  row: {
+  button: { marginTop: 14, borderRadius: 18 },
+  planRow: { borderWidth: 1.5, borderColor: 'transparent' },
+  radio: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', borderWidth: 2 },
+  radioOn: { borderColor: colors.sage },
+  radioOff: { borderColor: colors.checkRing },
+  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.sage },
+  empty: { fontFamily: fonts.regular, fontSize: 14, color: colors.muted, textAlign: 'center', marginTop: 24 },
+  repeat: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     backgroundColor: colors.row,
-    borderRadius: 16,
-    paddingVertical: 12,
+    borderRadius: 14,
+    paddingVertical: 10,
     paddingHorizontal: 14,
+    marginTop: 12,
   },
-  box: { width: 22, height: 22, borderRadius: 7, alignItems: 'center', justifyContent: 'center', borderWidth: 2 },
-  boxOn: { backgroundColor: colors.sage, borderColor: colors.sage },
-  boxOff: { borderColor: colors.checkRing },
-  check: { fontFamily: fonts.bold, fontSize: 13, color: colors.onSage, lineHeight: 15 },
-  name: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
-  meta: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted, marginTop: 1 },
-  create: {
-    height: 48,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    borderStyle: 'dashed',
-    borderColor: colors.line,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  createText: { fontFamily: fonts.semibold, fontSize: 14, color: colors.sage },
+  repeatTitle: { fontFamily: fonts.semibold, fontSize: 13, color: colors.text },
+  repeatSub: { fontFamily: fonts.regular, fontSize: 11, color: colors.muted, marginTop: 1 },
 });

@@ -1,5 +1,5 @@
 import * as d from '../derive';
-import type { AppData, Workout } from '../types';
+import { EMPTY_DATA, type AppData, type Workout } from '../types';
 
 const W = (id: string, sets: number, extra: Partial<Workout> = {}): Workout => ({
   id, name: id, group: 'chest', sets, reps: 8, deletedAt: null, ...extra,
@@ -9,7 +9,7 @@ const bench = W('bench', 3);
 const row = W('row', 2);
 
 function data(partial: Partial<AppData> = {}): AppData {
-  return { workouts: [bench, row], plans: {}, logs: {}, ...partial };
+  return { ...EMPTY_DATA, workouts: [bench, row], ...partial };
 }
 
 describe('dayStatus', () => {
