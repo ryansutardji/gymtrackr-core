@@ -1,0 +1,43 @@
+{
+  "expo": {
+    "name": "GymTrackr",
+    "slug": "gymtrackr",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "gymtrackr",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#16191d",
+    "newArchEnabled": true,
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#16191d"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.charkurylab.gymtrackr",
+      "buildNumber": "1",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.charkurylab.gymtrackr",
+      "softwareKeyboardLayoutMode": "pan",
+      "adaptiveIcon": {
+        "backgroundColor": "#16191d"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "backgroundColor": "#16191d"
+    },
+    "plugins": ["expo-router", "expo-font", "expo-sqlite"],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {}
+    }
+  }
+}

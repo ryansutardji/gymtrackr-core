@@ -1,4 +1,51 @@
+# local notes / design handoff (kept out of git by choice)
 resources/
-.DS_Store
 DECISIONS.md
 TODO.md
+
+# dependencies
+node_modules/
+
+# expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# native
+android/
+ios/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macos
+.DS_Store
+*.pem
+
+# local env files
+.env*.local
+.env
+
+# typescript
+*.tsbuildinfo
+
+# browser test screenshots/logs
+.playwright-mcp/
+
+# test coverage reports
+coverage/
+
+# personal Claude Code settings
+.claude/settings.local.json
