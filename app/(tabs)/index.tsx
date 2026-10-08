@@ -165,7 +165,7 @@ export default function CalendarScreen() {
           <WorkoutCard
             key={w.id}
             workout={w}
-            done={doneCount(logs, selectedDate, w.id)}
+            done={doneCount(logs, selectedDate, w)}
             held={heldId === w.id}
             onPress={() => onCardPress(w.id)}
             onLongPress={() => onCardLongPress(w.id)}

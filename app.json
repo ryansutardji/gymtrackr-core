@@ -8,10 +8,6 @@
     "userInterfaceStyle": "dark",
     "backgroundColor": "#16191d",
     "newArchEnabled": true,
-    "splash": {
-      "resizeMode": "contain",
-      "backgroundColor": "#16191d"
-    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.charkurylab.gymtrackr",
@@ -24,20 +20,40 @@
       "package": "com.charkurylab.gymtrackr",
       "softwareKeyboardLayoutMode": "pan",
       "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#16191d"
       }
     },
     "web": {
       "bundler": "metro",
       "output": "static",
-      "backgroundColor": "#16191d"
+      "backgroundColor": "#16191d",
+      "favicon": "./assets/images/icon.png"
     },
-    "plugins": ["expo-router", "expo-font", "expo-sqlite"],
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      "expo-sqlite",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 120,
+          "resizeMode": "contain",
+          "backgroundColor": "#16191d"
+        }
+      ]
+    ],
     "experiments": {
       "typedRoutes": true
     },
     "extra": {
-      "router": {}
-    }
+      "router": {},
+      "eas": {
+        "projectId": "6b9b426f-a0d5-4a49-9988-7f9c976e59cc"
+      }
+    },
+    "icon": "./assets/images/icon.png",
+    "owner": "rsutardji"
   }
 }

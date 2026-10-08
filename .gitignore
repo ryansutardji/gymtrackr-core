@@ -2,6 +2,7 @@
 resources/
 DECISIONS.md
 TODO.md
+BUILD_COMMANDS.md
 
 # dependencies
 node_modules/

@@ -52,6 +52,14 @@ describe('sessions / lastTopSet', () => {
   });
 });
 
+describe('doneCount', () => {
+  it('ignores sets beyond the current plan', () => {
+    const logs = { '2026-10-07': { row: [100, 100, 100, 100, 100] } }; // row now has 2 sets
+    expect(d.doneCount(logs, '2026-10-07', row)).toBe(2);
+    expect(d.isComplete(logs, '2026-10-07', row)).toBe(true);
+  });
+});
+
 describe('firstOpenSet', () => {
   it('opens on the first unlogged set, or the last set when all are logged', () => {
     expect(d.firstOpenSet({}, '2026-10-07', bench)).toBe(0);

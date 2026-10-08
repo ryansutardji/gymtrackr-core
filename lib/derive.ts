@@ -15,13 +15,18 @@ export function setsFor(logs: Logs, date: DateKey, workoutId: string): (number |
   return logs[date]?.[workoutId] ?? [];
 }
 
-/** Number of sets with a logged weight. */
-export function doneCount(logs: Logs, date: DateKey, workoutId: string): number {
-  return setsFor(logs, date, workoutId).filter((v) => v != null).length;
+/**
+ * Logged sets among the workout's current plan. Sets beyond the plan (logged
+ * before the set count was lowered) don't count, so progress never reads "5/4".
+ */
+export function doneCount(logs: Logs, date: DateKey, w: Workout): number {
+  return setsFor(logs, date, w.id)
+    .slice(0, w.sets)
+    .filter((v) => v != null).length;
 }
 
 export function isComplete(logs: Logs, date: DateKey, w: Workout): boolean {
-  return doneCount(logs, date, w.id) >= w.sets;
+  return doneCount(logs, date, w) >= w.sets;
 }
 
 /** The (non-deleted) workouts planned on a date. */

@@ -1,5 +1,4 @@
 // Design tokens from the "Quiet Dark" handoff (resources/README.md).
-// tailwind.config.js mirrors these colors for className styling.
 
 export const colors = {
   bg: '#16191d',
