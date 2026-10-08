@@ -116,20 +116,21 @@ describe('Create / edit workout', () => {
     expect(await screen.findByText('Edit workout')).toBeTruthy();
     expect(screen.getByLabelText('Workout name').props.value).toBe('Bench');
     fireEvent.changeText(screen.getByLabelText('Workout name'), 'Bench press');
-    fireEvent.press(screen.getByRole('button', { name: 'Next' }));
-    fireEvent.press(screen.getByRole('button', { name: 'Decrease Sets per session' }));
 
-    // Back keeps the draft.
-    fireEvent.press(screen.getByRole('button', { name: '‹ Back' }));
-    expect(screen.getByLabelText('Workout name').props.value).toBe('Bench press');
-    fireEvent.press(screen.getByRole('button', { name: 'Next' }));
+    // Editing is one page: sets and reps are right there, no "Next".
+    expect(screen.queryByRole('button', { name: 'Next' })).toBeNull();
+    expect(screen.getByLabelText('Sets per session: 5')).toBeTruthy();
+    expect(screen.getByLabelText('Reps per set: 8')).toBeTruthy();
+    fireEvent.press(screen.getByRole('button', { name: 'Decrease Sets per session' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Increase Reps per set' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Increase Reps per set' }));
 
     await act(async () => {
       fireEvent.press(screen.getByRole('button', { name: 'Save workout' }));
     });
     await waitFor(() => expect(mockBack).toHaveBeenCalled());
     const data = await repo.loadAll(db);
-    expect(data.workouts[0]).toMatchObject({ name: 'Bench press', sets: 4 });
+    expect(data.workouts[0]).toMatchObject({ name: 'Bench press', sets: 4, reps: 10 });
     expect(data.logs['2026-10-01'][id][4]).toBe(150);
   });
 

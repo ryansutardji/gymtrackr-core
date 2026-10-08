@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View, StyleSheet } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View, StyleSheet } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Chip } from '@/components/Chip';
@@ -15,8 +15,9 @@ type Draft = { name: string; group: MuscleGroup | null; sets: number; reps: numb
 const NEW_DRAFT: Draft = { name: '', group: null, sets: 3, reps: 10 };
 
 /**
- * Create (no `id`) or edit (`?id=`) a workout in two steps:
- * 1) name + muscle group, 2) sets + reps. Edits only affect future sessions.
+ * Create (no `id`) a workout in two steps: 1) name + muscle group, 2) sets +
+ * reps. Edit (`?id=`) shows everything on one scrolling page so sets/reps
+ * aren't hidden behind "Next". Edits only affect future sessions.
  */
 export default function WorkoutEditScreen() {
   const router = useRouter();
@@ -68,6 +69,55 @@ export default function WorkoutEditScreen() {
     }
   };
 
+  const nameAndGroup = (
+    <>
+      <SectionLabel style={{ marginTop: 28 }}>Name</SectionLabel>
+      <View style={styles.inputBox}>
+        <TextInput
+          value={draft.name}
+          onChangeText={(name) => update({ name })}
+          placeholder="e.g. Incline DB press"
+          placeholderTextColor={colors.muted}
+          autoFocus={isNew}
+          autoCapitalize="sentences"
+          returnKeyType="done"
+          maxLength={60}
+          style={styles.input}
+          accessibilityLabel="Workout name"
+        />
+      </View>
+
+      <SectionLabel style={{ marginTop: 28 }}>Muscle group</SectionLabel>
+      <View style={styles.groups}>
+        {MUSCLE_GROUPS.map((g) => (
+          <Chip key={g} size="lg" label={g} selected={draft.group === g} onPress={() => update({ group: g })} />
+        ))}
+      </View>
+    </>
+  );
+
+  const setsAndReps = (
+    <>
+      <SectionLabel style={{ marginTop: 30, marginBottom: 8 }}>Sets per session</SectionLabel>
+      <Stepper label="Sets per session" value={draft.sets} min={1} max={10} onChange={(sets) => update({ sets })} />
+
+      <SectionLabel style={{ marginTop: 22, marginBottom: 8 }}>Reps per set</SectionLabel>
+      <Stepper label="Reps per set" value={draft.reps} min={1} max={30} onChange={(reps) => update({ reps })} />
+
+      <SectionLabel style={{ marginTop: 22 }}>Plan</SectionLabel>
+      <View style={styles.plan}>
+        {Array.from({ length: draft.sets }, (_, i) => (
+          <View key={i} style={styles.planChip}>
+            <Text style={styles.planSet}>S{i + 1}</Text>
+            <Text style={styles.planReps} numberOfLines={1} adjustsFontSizeToFit>
+              {draft.reps} reps
+            </Text>
+          </View>
+        ))}
+      </View>
+    </>
+  );
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -76,47 +126,35 @@ export default function WorkoutEditScreen() {
       <View style={styles.header}>
         <Pressable
           accessibilityRole="button"
-          onPress={() => (step === 2 ? setStep(1) : router.back())}
+          onPress={() => (isNew && step === 2 ? setStep(1) : router.back())}
           hitSlop={10}
           style={styles.headerSide}
         >
-          <Text style={styles.back}>{step === 2 ? '‹ Back' : 'Cancel'}</Text>
+          <Text style={styles.back}>{isNew && step === 2 ? '‹ Back' : 'Cancel'}</Text>
         </Pressable>
         <Text style={styles.headerTitle}>{isNew ? 'New workout' : 'Edit workout'}</Text>
         <View style={styles.headerSide} />
       </View>
 
-      {step === 1 ? (
+      {!isNew ? (
         <>
-          <SectionLabel style={{ marginTop: 28 }}>Name</SectionLabel>
-          <View style={styles.inputBox}>
-            <TextInput
-              value={draft.name}
-              onChangeText={(name) => update({ name })}
-              placeholder="e.g. Incline DB press"
-              placeholderTextColor={colors.muted}
-              autoFocus={isNew}
-              autoCapitalize="sentences"
-              returnKeyType="done"
-              maxLength={60}
-              style={styles.input}
-              accessibilityLabel="Workout name"
-            />
-          </View>
-
-          <SectionLabel style={{ marginTop: 28 }}>Muscle group</SectionLabel>
-          <View style={styles.groups}>
-            {MUSCLE_GROUPS.map((g) => (
-              <Chip key={g} size="lg" label={g} selected={draft.group === g} onPress={() => update({ group: g })} />
-            ))}
-          </View>
-
-          {!isNew && (
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={{ paddingBottom: 24 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {nameAndGroup}
+            {setsAndReps}
             <Pressable accessibilityRole="button" onPress={onDelete} hitSlop={8} style={styles.deleteLink}>
               <Text style={styles.deleteText}>Delete workout</Text>
             </Pressable>
-          )}
-
+          </ScrollView>
+          <PrimaryButton label="Save workout" disabled={!canContinue || saving} onPress={onSave} />
+        </>
+      ) : step === 1 ? (
+        <>
+          {nameAndGroup}
           <View style={{ flex: 1 }} />
           <PrimaryButton label="Next" disabled={!canContinue} onPress={() => canContinue && setStep(2)} />
         </>
@@ -126,25 +164,7 @@ export default function WorkoutEditScreen() {
             <Text style={styles.draftName}>{draft.name.trim()}</Text>
             <Text style={styles.groupPill}>{draft.group}</Text>
           </View>
-
-          <SectionLabel style={{ marginTop: 30, marginBottom: 8 }}>Sets per session</SectionLabel>
-          <Stepper label="Sets per session" value={draft.sets} min={1} max={10} onChange={(sets) => update({ sets })} />
-
-          <SectionLabel style={{ marginTop: 22, marginBottom: 8 }}>Reps per set</SectionLabel>
-          <Stepper label="Reps per set" value={draft.reps} min={1} max={30} onChange={(reps) => update({ reps })} />
-
-          <SectionLabel style={{ marginTop: 22 }}>Plan</SectionLabel>
-          <View style={styles.plan}>
-            {Array.from({ length: draft.sets }, (_, i) => (
-              <View key={i} style={styles.planChip}>
-                <Text style={styles.planSet}>S{i + 1}</Text>
-                <Text style={styles.planReps} numberOfLines={1} adjustsFontSizeToFit>
-                  {draft.reps} reps
-                </Text>
-              </View>
-            ))}
-          </View>
-
+          {setsAndReps}
           <View style={{ flex: 1 }} />
           <PrimaryButton label="Save workout" disabled={saving} onPress={onSave} />
         </>
@@ -162,6 +182,7 @@ const styles = StyleSheet.create({
   inputBox: { backgroundColor: colors.surface, borderRadius: 16, paddingHorizontal: 16, marginTop: 8 },
   input: { height: 56, fontFamily: fonts.semibold, fontSize: 18, color: colors.text },
   groups: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
+  scroll: { flex: 1, marginBottom: 12 },
   deleteLink: { marginTop: 36, alignSelf: 'flex-start', paddingVertical: 8 },
   deleteText: { fontFamily: fonts.semibold, fontSize: 14, color: colors.destructive },
   draftName: { fontFamily: fonts.semibold, fontSize: 26, letterSpacing: -0.52, color: colors.text },
