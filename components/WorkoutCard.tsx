@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Pressable, Text, View, StyleSheet } from 'react-native';
 import { CheckIcon } from './icons';
 import { workoutMeta } from '@/lib/format';
@@ -18,6 +19,8 @@ type Props = {
   /** Spoken label for the delete button. */
   deleteA11yLabel?: string;
   a11yHint?: string;
+  /** Drag grip shown at the right edge (hidden while in the hold state). */
+  handle?: ReactNode;
 };
 
 export const HOLD_DELAY_MS = 500;
@@ -36,6 +39,7 @@ export function WorkoutCard({
   deleteLabel = 'Delete',
   deleteA11yLabel = `Remove ${workout.name} from this day`,
   a11yHint = 'Tap to log. Press and hold to remove from this day.',
+  handle,
 }: Props) {
   const complete = done != null && done >= workout.sets;
   return (
@@ -73,6 +77,7 @@ export function WorkoutCard({
           <Text style={styles.deleteText}>{deleteLabel}</Text>
         </Pressable>
       )}
+      {!held && handle}
     </View>
   );
 }

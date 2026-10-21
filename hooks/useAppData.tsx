@@ -2,7 +2,15 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { openDatabase, type SqlDb } from '@/lib/db';
 import * as repo from '@/lib/repo';
 import { todayKey } from '@/lib/dates';
-import { EMPTY_DATA, type AppData, type DateKey, type Routine, type Workout, type WorkoutDraft } from '@/lib/types';
+import {
+  EMPTY_DATA,
+  type AppData,
+  type DateKey,
+  type Difficulty,
+  type Routine,
+  type Workout,
+  type WorkoutDraft,
+} from '@/lib/types';
 
 type Actions = {
   createWorkout(draft: WorkoutDraft): Promise<Workout>;
@@ -10,7 +18,15 @@ type Actions = {
   deleteWorkout(id: string): Promise<void>;
   addToPlan(date: DateKey, workoutIds: string[]): Promise<void>;
   removeFromDay(date: DateKey, workoutId: string): Promise<void>;
-  logSet(date: DateKey, workoutId: string, setIndex: number, weight: number | null): Promise<void>;
+  reorderDay(date: DateKey, items: { workoutId: string; routineId?: string }[]): Promise<void>;
+  reorderRoutine(id: string, workoutIds: string[]): Promise<void>;
+  logSet(
+    date: DateKey,
+    workoutId: string,
+    setIndex: number,
+    weight: number | null,
+    difficulty?: Difficulty | null
+  ): Promise<void>;
   createRoutine(name: string, workoutIds: string[]): Promise<Routine>;
   renameRoutine(id: string, name: string): Promise<void>;
   addToRoutine(id: string, workoutIds: string[]): Promise<void>;
@@ -78,7 +94,10 @@ export function AppDataProvider({
       deleteWorkout: (id) => write((db) => repo.deleteWorkout(db, id)),
       addToPlan: (date, ids) => write((db) => repo.addToPlan(db, date, ids)),
       removeFromDay: (date, id) => write((db) => repo.removeFromDay(db, date, id)),
-      logSet: (date, id, setIndex, weight) => write((db) => repo.logSet(db, date, id, setIndex, weight)),
+      reorderDay: (date, items) => write((db) => repo.reorderDay(db, date, items)),
+      reorderRoutine: (id, ids) => write((db) => repo.reorderRoutine(db, id, ids)),
+      logSet: (date, id, setIndex, weight, difficulty = null) =>
+        write((db) => repo.logSet(db, date, id, setIndex, weight, difficulty)),
       createRoutine: (name, ids) => write((db) => repo.createRoutine(db, name, ids)),
       renameRoutine: (id, name) => write((db) => repo.renameRoutine(db, id, name)),
       addToRoutine: (id, ids) => write((db) => repo.addToRoutine(db, id, ids)),

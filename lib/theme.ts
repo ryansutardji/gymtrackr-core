@@ -19,6 +19,13 @@ export const colors = {
   onSage: '#16191d',
 } as const;
 
+/** "How did it feel?" colors (chart marks, legend, detail tags). */
+export const ratingColors = {
+  easy: colors.sage,
+  medium: colors.text,
+  hard: colors.destructive,
+} as const;
+
 // Custom fonts ignore `fontWeight`, so each weight is its own family.
 export const fonts = {
   regular: 'Figtree_400Regular',

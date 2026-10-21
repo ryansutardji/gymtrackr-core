@@ -125,4 +125,47 @@ describe('Logger', () => {
     expect(mockBack).toHaveBeenCalledTimes(1);
     expect((await repo.loadAll(db)).logs).toEqual({});
   });
+
+  describe('how did it feel?', () => {
+    const rating = (name: string) => screen.getByRole('button', { name });
+
+    it('is optional, toggles off on a second tap, and saves with the set', async () => {
+      const { db, id } = await setup();
+      expect(screen.getByText('HOW DID IT FEEL?')).toBeTruthy();
+      expect(screen.getByText('Optional')).toBeTruthy();
+
+      fireEvent.press(rating('Medium'));
+      expect(rating('Medium')).toBeSelected();
+      expect(screen.getByText('Tap again to clear')).toBeTruthy();
+      fireEvent.press(rating('Medium'));
+      expect(rating('Medium')).not.toBeSelected();
+      expect(screen.getByText('Optional')).toBeTruthy();
+
+      fireEvent.press(rating('Hard'));
+      await press('Log set');
+      // Next set starts blank.
+      expect(screen.getByText('Set 2 of 3')).toBeTruthy();
+      expect(rating('Hard')).not.toBeSelected();
+      expect(screen.getByText('S1 45 Hard')).toBeTruthy();
+
+      await press('Log set'); // set 2 unrated
+      const data = await repo.loadAll(db);
+      expect(data.ratings[DATE][id]).toEqual(['hard']);
+      expect(data.logs[DATE][id]).toEqual([45, 45]);
+    });
+
+    it("shows a logged set's rating and can change it with Update set", async () => {
+      const { db, id } = await setup(async (db, id) => {
+        await repo.logSet(db, DATE, id, 0, 135, 'easy');
+      });
+      expect(screen.getByText('Set 2 of 3')).toBeTruthy();
+      expect(screen.getByText('S1 135 Easy')).toBeTruthy();
+
+      fireEvent.press(screen.getByRole('button', { name: /^Set 1, logged/ }));
+      expect(rating('Easy')).toBeSelected();
+      fireEvent.press(rating('Hard'));
+      await press('Update set');
+      expect((await repo.loadAll(db)).ratings[DATE][id]).toEqual(['hard']);
+    });
+  });
 });

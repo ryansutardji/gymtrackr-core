@@ -22,6 +22,13 @@ export type Plans = Record<DateKey, string[]>;
 /** Per date, per workout: one weight per set index, null = not logged. Weights are raw numbers (lb). */
 export type Logs = Record<DateKey, Record<string, (number | null)[]>>;
 
+/** How a set felt. Optional — null means not rated. */
+export type Difficulty = 'easy' | 'medium' | 'hard';
+export const DIFFICULTIES: Difficulty[] = ['easy', 'medium', 'hard'];
+
+/** Same shape as Logs, holding each logged set's rating (null = not rated). */
+export type Ratings = Record<DateKey, Record<string, (Difficulty | null)[]>>;
+
 /**
  * A saved group of workouts that can be dropped onto a day at once. The app
  * shows these as "Plans"; in code they're routines, because `Plans` already
@@ -52,22 +59,27 @@ export type AppData = {
   workouts: Workout[];
   plans: Plans;
   logs: Logs;
+  ratings: Ratings;
   routines: Routine[];
   schedules: RoutineSchedule[];
   /** Per date, workout ids removed from that day only (hides them from repeats). */
   exclusions: Record<DateKey, string[]>;
   /** Per date, workout id → routine id that put it there (for the plan label). */
   planSources: Record<DateKey, Record<string, string>>;
+  /** Dates whose workouts were reordered by hand (shown in exactly that order). */
+  orderedDays: Record<DateKey, true>;
 };
 
 export const EMPTY_DATA: AppData = {
   workouts: [],
   plans: {},
   logs: {},
+  ratings: {},
   routines: [],
   schedules: [],
   exclusions: {},
   planSources: {},
+  orderedDays: {},
 };
 
 export type DayStatus = 'none' | 'planned' | 'done';

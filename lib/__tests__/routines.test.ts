@@ -174,6 +174,42 @@ describe('weekly repeat', () => {
   });
 });
 
+describe('reordering', () => {
+  it('a plan keeps its new order', async () => {
+    const r = await repo.createRoutine(db, 'Push', [b, o, f]);
+    await repo.reorderRoutine(db, r.id, [f, b, o]);
+    expect((await repo.loadAll(db)).routines[0].workoutIds).toEqual([f, b, o]);
+  });
+
+  it('a reordered day keeps exactly that order, and later additions go to the end', async () => {
+    await repo.addToPlan(db, FRI, [b, o]);
+    await repo.reorderDay(db, FRI, [{ workoutId: o }, { workoutId: b }]);
+    await repo.addToPlan(db, FRI, [f]);
+    expect(await names(FRI)).toEqual(['Overhead press', 'Bench press', 'Cable fly']);
+  });
+
+  it('reordering a repeat day saves it with its plan label, split into runs', async () => {
+    const r = await repo.createRoutine(db, 'Push', [b, o]);
+    await repo.addRoutineToDay(db, THU, r.id, true);
+    await repo.addToPlan(db, NEXT_THU, [f]);
+    // Next Thursday is shown from the repeat: Bench, OHP (Push), then Fly.
+    await repo.reorderDay(db, NEXT_THU, [
+      { workoutId: b, routineId: r.id },
+      { workoutId: f },
+      { workoutId: o, routineId: r.id },
+    ]);
+    await repo.logSet(db, NEXT_THU, o, 0, 95); // logging doesn't move anything
+    const data = await repo.loadAll(db);
+    expect(dayGroups(data, NEXT_THU).map((g) => [g.routine?.name, g.workouts.map((w) => w.name)])).toEqual([
+      ['Push', ['Bench press']],
+      [undefined, ['Cable fly']],
+      ['Push', ['Overhead press']],
+    ]);
+    // Other weeks are untouched.
+    expect(await names(THU_AFTER)).toEqual(['Bench press', 'Overhead press']);
+  });
+});
+
 describe('deleting a plan', () => {
   it('stops its repeats but keeps days up to today, workouts, and logs', async () => {
     const r = await repo.createRoutine(db, 'Push', [b]);

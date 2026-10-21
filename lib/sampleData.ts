@@ -37,9 +37,14 @@ const SCHEDULE: Record<number, string[]> = {
 };
 
 /** Wipes the database and fills it with sample history around `today`. */
+const RATINGS = ['easy', 'medium', 'hard'] as const;
+
 export async function seedSampleData(db: SqlDb, today: DateKey = todayKey()): Promise<void> {
   await db.withTransactionAsync(async () => {
-    await db.execAsync('DELETE FROM set_logs; DELETE FROM plan_entries; DELETE FROM workouts;');
+    await db.execAsync(
+      'DELETE FROM set_logs; DELETE FROM plan_entries; DELETE FROM day_exclusions; DELETE FROM routine_schedules; ' +
+        'DELETE FROM routine_workouts; DELETE FROM routines; DELETE FROM workouts;'
+    );
     const now = new Date().toISOString();
     for (const d of DEFS) {
       await db.runAsync(
@@ -60,12 +65,12 @@ export async function seedSampleData(db: SqlDb, today: DateKey = todayKey()): Pr
         for (let i = 0; i < def.offs!.length; i++) {
           const w =
             Math.round((def.base! + n * def.prog! + def.offs![i]) / 5) * 5 + ((n * 7 + i * 3) % 5 === 0 ? -5 : 0);
-          await db.runAsync('INSERT INTO set_logs (date, workout_id, set_index, weight) VALUES (?, ?, ?, ?)', [
-            k,
-            id,
-            i,
-            w,
-          ]);
+          // The last six weeks are rated (later sets feel harder); older sets stay unrated.
+          const rating = k >= addDays(today, -42) ? RATINGS[Math.min(2, i + (n % 2))] : null;
+          await db.runAsync(
+            'INSERT INTO set_logs (date, workout_id, set_index, weight, difficulty) VALUES (?, ?, ?, ?, ?)',
+            [k, id, i, w, rating]
+          );
         }
       }
     }

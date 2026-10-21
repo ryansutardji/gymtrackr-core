@@ -7,17 +7,28 @@ import { Segmented } from '@/components/Segmented';
 import { ProgressChart } from '@/components/ProgressChart';
 import { useAppData } from '@/hooks/useAppData';
 import { useSelectedDate } from '@/hooks/useSelectedDate';
-import { buildChart, nearestSession, RANGES, sessionsInRange, setCount, type Range } from '@/lib/chart';
-import { loggedWorkouts, sessions as allSessions } from '@/lib/derive';
+import {
+  buildChart,
+  hasSharedWeight,
+  markMode,
+  nearestSession,
+  RANGES,
+  sessionsInRange,
+  setCount,
+  type Range,
+} from '@/lib/chart';
+import { loggedWorkouts, ratingCounts, sessions as allSessions } from '@/lib/derive';
 import { formatMonthDay, formatShortDay, todayKey } from '@/lib/dates';
 import { formatWeight, UNIT } from '@/lib/format';
 import { tapFeedback } from '@/lib/haptics';
-import { colors, fonts } from '@/lib/theme';
-import type { DateKey } from '@/lib/types';
+import { colors, fonts, ratingColors } from '@/lib/theme';
+import { DIFFICULTIES, type DateKey, type Difficulty } from '@/lib/types';
+
+const LABEL: Record<Difficulty, string> = { easy: 'Easy', medium: 'Medium', hard: 'Hard' };
 
 export default function StatsScreen() {
   const router = useRouter();
-  const { workouts, logs } = useAppData();
+  const { workouts, logs, ratings } = useAppData();
   const { setSelectedDate } = useSelectedDate();
 
   const logged = useMemo(() => {
@@ -35,8 +46,8 @@ export default function StatsScreen() {
 
   const workout = logged.find((w) => w.id === workoutId) ?? logged[0];
   const ses = useMemo(
-    () => (workout ? sessionsInRange(allSessions(logs, workout.id), range, todayKey()) : []),
-    [workout, logs, range]
+    () => (workout ? sessionsInRange(allSessions(logs, workout.id, ratings), range, todayKey()) : []),
+    [workout, logs, ratings, range]
   );
   const nSets = setCount(ses);
   const hi = highlighted != null && highlighted < nSets ? highlighted : null;
@@ -45,7 +56,8 @@ export default function StatsScreen() {
   const selIdx = tappedIdx >= 0 ? tappedIdx : ses.length - 1;
   const selected = ses[selIdx];
   const previous = selIdx > 0 ? ses[selIdx - 1] : undefined;
-  const chart = useMemo(() => (selected ? buildChart(ses, hi, selected) : null), [ses, hi, selected]);
+  const mode = markMode(range);
+  const chart = useMemo(() => (selected ? buildChart(ses, hi, selected, mode) : null), [ses, hi, selected, mode]);
 
   const pickWorkout = (id: string) => {
     setWorkoutId(id);
@@ -115,6 +127,8 @@ export default function StatsScreen() {
         <>
           <ProgressChart
             chart={chart}
+            mode={mode}
+            highlighted={hi}
             accessibilityLabel={`${workout.name} progress chart, ${ses.length} sessions. Tap to select a session.`}
             onTapX={(x) => {
               const d = nearestSession(chart.sessionX, x);
@@ -151,19 +165,31 @@ export default function StatsScreen() {
                 <Text style={styles.openDay}>Open day ›</Text>
               </Pressable>
             </View>
+            {hi == null && hasSharedWeight(selected) && (
+              <Text style={styles.detailNote}>
+                {mode === 'stacked' ? 'Same weight · stacked' : 'Same weight · hardest shown'}
+              </Text>
+            )}
             <View style={{ marginTop: 6, gap: 2 }}>
               {Array.from({ length: nSets }, (_, i) => {
                 const v = selected.weights[i] ?? null;
                 const pv = previous?.weights[i] ?? null;
                 const d = v != null && pv != null ? Math.round((v - pv) * 10) / 10 : 0;
                 const on = hi === i;
-                const textStyle = [styles.detailText, on && { color: colors.sage, fontFamily: fonts.bold }];
+                const rt = selected.ratings?.[i] ?? null;
+                const textStyle = [styles.detailText, on && { fontFamily: fonts.bold }];
                 return (
                   <View key={i} style={styles.detailRow}>
                     <Text style={textStyle}>Set {i + 1}</Text>
                     <View style={styles.detailValue}>
                       <Text style={textStyle}>{formatWeight(v)}</Text>
                       <Text style={styles.delta}>{d ? `${d > 0 ? '+' : '−'}${Math.abs(d)}` : ''}</Text>
+                      <View style={styles.tag} accessibilityLabel={rt ? `felt ${LABEL[rt]}` : 'not rated'}>
+                        {rt && <View style={[styles.tagDot, { backgroundColor: ratingColors[rt] }]} />}
+                        <Text style={[styles.tagText, { color: rt ? ratingColors[rt] : colors.muted }]}>
+                          {rt ? LABEL[rt] : '—'}
+                        </Text>
+                      </View>
                     </View>
                   </View>
                 );
@@ -190,6 +216,7 @@ function Summary({
   const since = formatMonthDay(sessions[0].date);
   let head: string;
   let tail: string;
+  let effort = '';
   if (highlighted != null) {
     const vals = sessions.map((s) => s.weights[highlighted]).filter((v): v is number => v != null);
     const first = vals[0];
@@ -197,15 +224,25 @@ function Summary({
     const d = Math.round((last - first) * 10) / 10;
     head = `Set ${highlighted + 1} · ${last} ${UNIT} now`;
     tail = `· ${d >= 0 ? '+' : '−'}${Math.abs(d)} since ${since} · best ${Math.max(...vals)}`;
+    const counts = ratingCounts(sessions, highlighted);
+    const rated = DIFFICULTIES.reduce((n, k) => n + counts[k], 0);
+    if (rated) {
+      effort = `Last ${rated} rated · ${DIFFICULTIES.filter((k) => counts[k])
+        .map((k) => `${LABEL[k]} ${counts[k]}`)
+        .join(' · ')}`;
+    }
   } else {
     head = `All ${nSets} ${nSets === 1 ? 'set' : 'sets'}`;
     tail = `· ${sessions.length} ${sessions.length === 1 ? 'session' : 'sessions'} since ${since}`;
   }
   return (
-    <Text style={styles.summary}>
-      <Text style={{ fontFamily: fonts.bold, color: highlighted != null ? colors.sage : colors.text }}>{head}</Text>{' '}
-      <Text style={{ color: colors.muted }}>{tail}</Text>
-    </Text>
+    <>
+      <Text style={styles.summary}>
+        <Text style={{ fontFamily: fonts.bold, color: colors.text }}>{head}</Text>{' '}
+        <Text style={{ color: colors.muted }}>{tail}</Text>
+      </Text>
+      {effort ? <Text style={styles.effort}>{effort}</Text> : null}
+    </>
   );
 }
 
@@ -259,13 +296,18 @@ const styles = StyleSheet.create({
   detailRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'baseline',
-    paddingVertical: 6,
+    alignItems: 'center',
+    paddingVertical: 7,
     borderTopWidth: 1,
     borderTopColor: colors.raised,
   },
   detailText: { fontFamily: fonts.medium, fontSize: 14, color: colors.text },
-  detailValue: { flexDirection: 'row', alignItems: 'baseline', gap: 4 },
+  detailValue: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  detailNote: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted, marginTop: 2 },
+  tag: { width: 70, flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 6 },
+  tagDot: { width: 8, height: 8, borderRadius: 4 },
+  tagText: { fontFamily: fonts.semibold, fontSize: 12 },
+  effort: { marginTop: 2, fontFamily: fonts.regular, fontSize: 13, lineHeight: 19, color: colors.muted },
   delta: { minWidth: 26, textAlign: 'right', fontFamily: fonts.medium, fontSize: 12, color: colors.muted },
   empty: { marginTop: 40, textAlign: 'center', fontFamily: fonts.regular, fontSize: 14, lineHeight: 21, color: colors.muted },
 });

@@ -1,12 +1,17 @@
 import { weekdayOf } from './dates';
-import type { AppData, DateKey, DayStatus, Logs, Routine, RoutineSchedule, Workout } from './types';
+import type { AppData, DateKey, DayStatus, Difficulty, Logs, Ratings, Routine, RoutineSchedule, Workout } from './types';
 
 // Pure calculations over the in-memory data. Rules mirror the logic class in
 // resources/reference/Workout Tracker.dc.html.
 
 export const DEFAULT_START_WEIGHT = 45;
 
-export type Session = { date: DateKey; weights: (number | null)[] };
+export type Session = {
+  date: DateKey;
+  weights: (number | null)[];
+  /** Per set, how it felt; missing/null = not rated. */
+  ratings?: (Difficulty | null)[];
+};
 
 export function activeWorkouts(workouts: Workout[]): Workout[] {
   return workouts.filter((w) => !w.deletedAt);
@@ -64,6 +69,8 @@ export type DayGroup = {
  * The day's workouts grouped by the plan that put them there, groups in order
  * of first appearance. Inside a plan's group, workouts keep the plan's order,
  * so logging one (which saves it to the day) never moves its card.
+ * A day reordered by hand keeps exactly that order instead; each run of
+ * workouts from the same plan becomes its own group.
  */
 export function dayGroups(data: AppData, date: DateKey): DayGroup[] {
   const byId = new Map(activeWorkouts(data.workouts).map((w) => [w.id, w]));
@@ -72,12 +79,17 @@ export function dayGroups(data: AppData, date: DateKey): DayGroup[] {
   const ids = [...(data.plans[date] ?? [])];
   for (const id of repeats.keys()) if (!ids.includes(id)) ids.push(id);
 
+  const ordered = !!data.orderedDays[date];
   const groups: DayGroup[] = [];
   const byKey = new Map<string, DayGroup>();
+  let lastRid: string | null = null;
   for (const id of ids) {
     const w = byId.get(id);
     if (!w) continue;
     const rid = sources[id] ?? repeats.get(id) ?? '';
+    // Hand-ordered days start a new group whenever the plan changes.
+    if (ordered && rid !== lastRid) byKey.delete(rid);
+    lastRid = rid;
     let g = byKey.get(rid);
     if (!g) {
       const routine = rid ? data.routines.find((r) => r.id === rid) : undefined;
@@ -91,7 +103,7 @@ export function dayGroups(data: AppData, date: DateKey): DayGroup[] {
     g.workouts.push(w);
   }
   for (const g of groups) {
-    if (!g.routine) continue;
+    if (!g.routine || ordered) continue;
     const pos = (w: Workout) => {
       const i = g.routine!.workoutIds.indexOf(w.id);
       return i < 0 ? Number.MAX_SAFE_INTEGER : i;
@@ -136,11 +148,26 @@ export function dayStatus(data: AppData, date: DateKey): DayStatus {
 }
 
 /** Dates with at least one logged set for the workout, oldest first. */
-export function sessions(logs: Logs, workoutId: string): Session[] {
+export function sessions(logs: Logs, workoutId: string, ratings: Ratings = {}): Session[] {
   return Object.keys(logs)
     .sort()
     .filter((date) => logs[date][workoutId]?.some((v) => v != null))
-    .map((date) => ({ date, weights: logs[date][workoutId] }));
+    .map((date) => ({ date, weights: logs[date][workoutId], ratings: ratings[date]?.[workoutId] ?? [] }));
+}
+
+/** For "hardest wins": hard 3 > medium 2 > easy 1 > unrated 0. */
+export function difficultyRank(d: Difficulty | null | undefined): number {
+  return d === 'hard' ? 3 : d === 'medium' ? 2 : d === 'easy' ? 1 : 0;
+}
+
+/** Rating counts for one set over the last `n` sessions (unrated skipped). */
+export function ratingCounts(list: Session[], setIndex: number, n = 5): Record<Difficulty, number> {
+  const counts: Record<Difficulty, number> = { easy: 0, medium: 0, hard: 0 };
+  for (const s of list.slice(-n)) {
+    const r = s.ratings?.[setIndex];
+    if (r) counts[r]++;
+  }
+  return counts;
 }
 
 /** Most recent session strictly before `date`. */

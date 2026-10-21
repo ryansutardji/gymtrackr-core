@@ -1,8 +1,9 @@
-import { buildChart, nearestSession, sessionsInRange, setCount } from '../chart';
+import { buildChart, hasSharedWeight, markMode, nearestSession, sessionsInRange, setCount } from '../chart';
 import type { Session } from '../derive';
-import { colors } from '../theme';
+import { colors, ratingColors } from '../theme';
+import type { Difficulty } from '../types';
 
-const S = (date: string, weights: (number | null)[]): Session => ({ date, weights });
+const S = (date: string, weights: (number | null)[], ratings?: (Difficulty | null)[]): Session => ({ date, weights, ratings });
 
 const sessions = [
   S('2026-07-06', [100, 110]),
@@ -48,14 +49,11 @@ describe('buildChart', () => {
     expect(c.xLabels[3].label).toBe('Oct 5');
   });
 
-  it('highlighting moves that line on top in sage and dims the rest', () => {
+  it('highlighting moves that line on top in light grey and dims the rest', () => {
     const c = buildChart(sessions, 0, sessions[1]);
     expect(c.lines.map((l) => l.set)).toEqual([1, 2, 0]);
-    expect(c.lines[2]).toMatchObject({ stroke: colors.sage, width: 3.5 });
+    expect(c.lines[2]).toMatchObject({ stroke: colors.text, width: 3 });
     expect(c.lines[0]).toMatchObject({ stroke: colors.dimLine, width: 1.75 });
-    // Markers at the selected session; highlighted one is the big ringed dot, drawn last.
-    expect(c.dots).toHaveLength(3);
-    expect(c.dots[2]).toMatchObject({ set: 0, r: 5.5, stroke: colors.sage });
   });
 
   it('a single session sits in the middle', () => {
@@ -72,5 +70,63 @@ describe('nearestSession', () => {
     expect(nearestSession(c.sessionX, 150)).toBe('2026-08-06');
     expect(nearestSession(c.sessionX, 320)).toBe('2026-10-05');
     expect(nearestSession([], 100)).toBeNull();
+  });
+});
+
+describe('rating marks', () => {
+  // Two sessions → sp = 256, so r = 3.8 and pill width = 8.
+  const rated = [
+    S('2026-10-01', [100, 110, 120], ['easy', null, 'hard']),
+    S('2026-10-08', [145, 145, 145], ['easy', 'medium', 'hard']),
+  ];
+  const circles = (c: ReturnType<typeof buildChart>) => c.marks.filter((m) => m.type === 'circle');
+
+  it('unrated data draws no marks', () => {
+    expect(buildChart(sessions, null, sessions[2]).marks).toEqual([]);
+  });
+
+  it('one dot per rated set at its own weight, in its rating colour', () => {
+    const c = buildChart([rated[0]], null, rated[0]);
+    expect(circles(c).map((m) => m.type === 'circle' && [m.fill, m.r])).toEqual([
+      [ratingColors.easy, 3.8],
+      [ratingColors.hard, 3.8],
+    ]);
+  });
+
+  it('stacked mode: sets sharing a weight become one pill, S1 on top', () => {
+    const c = buildChart(rated, null, rated[1], 'stacked');
+    const pill = c.marks.filter((m) => m.key.startsWith('m1_145'));
+    expect(pill.map((m) => m.type)).toEqual(['rect', 'rect', 'rect', 'rect']); // backing + 3 slices
+    const slices = pill.slice(1);
+    expect(slices.map((m) => m.type === 'rect' && m.fill)).toEqual([ratingColors.easy, ratingColors.medium, ratingColors.hard]);
+    const ys = slices.map((m) => (m.type === 'rect' ? m.y : 0));
+    expect(ys[0]).toBeLessThan(ys[1]);
+    expect(slices[0]).toMatchObject({ width: 8 });
+  });
+
+  it('stacked mode shows unrated slices in a neutral grey', () => {
+    const s = [S('2026-10-08', [145, 145], [null, 'hard'])];
+    const c = buildChart(s, null, s[0], 'stacked');
+    expect(c.marks.slice(1).map((m) => m.type === 'rect' && m.fill)).toEqual([colors.line, ratingColors.hard]);
+  });
+
+  it('hardest mode: one dot in the hardest rating, with a ring when there is room', () => {
+    const c = buildChart(rated, null, rated[1], 'hardest');
+    const shared = c.marks.filter((m) => m.key.startsWith('m1_145'));
+    expect(shared).toHaveLength(2);
+    expect(shared[0]).toMatchObject({ type: 'circle', stroke: colors.checkRing, r: 3.8 + 2.6 });
+    expect(shared[1]).toMatchObject({ type: 'circle', fill: ratingColors.hard });
+  });
+
+  it('a highlighted set shows only its own marks, slightly bigger', () => {
+    const c = buildChart(rated, 1, rated[1], 'stacked');
+    expect(c.marks).toHaveLength(1); // set 2 is unrated on Oct 1
+    expect(c.marks[0]).toMatchObject({ type: 'circle', fill: ratingColors.medium, r: 3.8 + 0.6 });
+  });
+
+  it('mode by range and the shared-weight check', () => {
+    expect(['1M', '3M', '1Y', 'All'].map((r) => markMode(r as never))).toEqual(['stacked', 'stacked', 'hardest', 'hardest']);
+    expect(hasSharedWeight(rated[1])).toBe(true);
+    expect(hasSharedWeight(rated[0])).toBe(false);
   });
 });
