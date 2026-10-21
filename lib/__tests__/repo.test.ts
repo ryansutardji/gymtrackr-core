@@ -1,5 +1,5 @@
 import { createMigratedDb } from '@/test-utils/nodeDb';
-import { migrate, type SqlDb } from '../db';
+import { migrate, MIGRATIONS, type SqlDb } from '../db';
 import * as repo from '../repo';
 import type { WorkoutDraft } from '../types';
 
@@ -15,7 +15,7 @@ describe('migrate', () => {
   it('is safe to run again on an up-to-date database', async () => {
     await migrate(db);
     const v = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version', []);
-    expect(v?.user_version).toBe(2);
+    expect(v?.user_version).toBe(MIGRATIONS.length);
   });
 });
 

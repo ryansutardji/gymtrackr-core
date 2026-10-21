@@ -7,13 +7,15 @@ type ScreenProps = {
   children: ReactNode;
   /** Called when empty space (not a control) is tapped. */
   onBackgroundPress?: () => void;
+  /** Turned off while a row is being dragged. */
+  scrollEnabled?: boolean;
 };
 
 // Scrollable tab screen: 20 side padding, 120 bottom padding to clear the tab bar.
-export function Screen({ children, onBackgroundPress }: ScreenProps) {
+export function Screen({ children, onBackgroundPress, scrollEnabled = true }: ScreenProps) {
   return (
     <SafeAreaView edges={['top']} style={styles.safe}>
-      <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1 }} scrollEnabled={scrollEnabled}>
         {onBackgroundPress ? (
           <Pressable accessible={false} onPress={onBackgroundPress} style={styles.content}>
             {children}

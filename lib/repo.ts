@@ -3,6 +3,7 @@ import { addDays, weekdayOf } from './dates';
 import type {
   AppData,
   DateKey,
+  Difficulty,
   Logs,
   MuscleGroup,
   Plans,
@@ -54,25 +55,41 @@ export async function loadAll(db: SqlDb): Promise<AppData> {
 
   const plans: Plans = {};
   const planSources: AppData['planSources'] = {};
-  const planRows = await db.getAllAsync<{ date: string; workout_id: string; routine_id: string | null }>(
-    'SELECT date, workout_id, routine_id FROM plan_entries ORDER BY date, rowid',
+  const orderedDays: AppData['orderedDays'] = {};
+  const planRows = await db.getAllAsync<{
+    date: string;
+    workout_id: string;
+    routine_id: string | null;
+    position: number | null;
+  }>(
+    // Hand-ordered entries first in their order, then the rest in the order they were added.
+    'SELECT date, workout_id, routine_id, position FROM plan_entries ORDER BY date, position IS NULL, position, rowid',
     []
   );
   for (const r of planRows) {
     (plans[r.date] ??= []).push(r.workout_id);
     if (r.routine_id) (planSources[r.date] ??= {})[r.workout_id] = r.routine_id;
+    if (r.position != null) orderedDays[r.date] = true;
   }
 
   const logs: Logs = {};
-  const logRows = await db.getAllAsync<{ date: string; workout_id: string; set_index: number; weight: number }>(
-    'SELECT date, workout_id, set_index, weight FROM set_logs ORDER BY date, workout_id, set_index',
-    []
-  );
+  const ratings: AppData['ratings'] = {};
+  const logRows = await db.getAllAsync<{
+    date: string;
+    workout_id: string;
+    set_index: number;
+    weight: number;
+    difficulty: Difficulty | null;
+  }>('SELECT date, workout_id, set_index, weight, difficulty FROM set_logs ORDER BY date, workout_id, set_index', []);
   for (const r of logRows) {
-    const day = (logs[r.date] ??= {});
-    const sets = (day[r.workout_id] ??= []);
+    const sets = ((logs[r.date] ??= {})[r.workout_id] ??= []);
     while (sets.length < r.set_index) sets.push(null);
     sets[r.set_index] = r.weight;
+    if (r.difficulty) {
+      const rated = ((ratings[r.date] ??= {})[r.workout_id] ??= []);
+      while (rated.length < r.set_index) rated.push(null);
+      rated[r.set_index] = r.difficulty;
+    }
   }
 
   const routineRows = await db.getAllAsync<{ id: string; name: string; deleted_at: string | null }>(
@@ -100,7 +117,7 @@ export async function loadAll(db: SqlDb): Promise<AppData> {
   );
   for (const r of exclusionRows) (exclusions[r.date] ??= []).push(r.workout_id);
 
-  return { workouts, plans, logs, routines, schedules, exclusions, planSources };
+  return { workouts, plans, logs, ratings, routines, schedules, exclusions, planSources, orderedDays };
 }
 
 function toSchedule(r: ScheduleRow): RoutineSchedule {
@@ -156,6 +173,27 @@ export async function addToPlan(db: SqlDb, date: DateKey, workoutIds: string[]):
 }
 
 /**
+ * Saves a day's hand-made order. Workouts shown there by a weekly repeat are
+ * saved to the day too (with their plan), so the order sticks.
+ */
+export async function reorderDay(
+  db: SqlDb,
+  date: DateKey,
+  items: { workoutId: string; routineId?: string }[]
+): Promise<void> {
+  await db.withTransactionAsync(async () => {
+    for (const [i, it] of items.entries()) {
+      await db.runAsync(
+        `INSERT INTO plan_entries (date, workout_id, routine_id, position) VALUES (?, ?, ?, ?)
+         ON CONFLICT (date, workout_id) DO UPDATE SET position = excluded.position,
+           routine_id = COALESCE(plan_entries.routine_id, excluded.routine_id)`,
+        [date, it.workoutId, it.routineId ?? null, i]
+      );
+    }
+  });
+}
+
+/**
  * Press-and-hold delete: removes the workout from that date's plan and that
  * date's logs only. The exclusion keeps a weekly repeat from putting it back.
  */
@@ -170,15 +208,16 @@ export async function removeFromDay(db: SqlDb, date: DateKey, workoutId: string)
 // ---- logs
 
 /**
- * Records one set's weight (`null` clears it). Logging a workout that isn't
- * planned that day adds it to the plan.
+ * Records one set's weight and optional rating (`null` weight clears the set).
+ * Logging a workout that isn't planned that day adds it to the plan.
  */
 export async function logSet(
   db: SqlDb,
   date: DateKey,
   workoutId: string,
   setIndex: number,
-  weight: number | null
+  weight: number | null,
+  difficulty: Difficulty | null = null
 ): Promise<void> {
   await db.withTransactionAsync(async () => {
     if (weight == null) {
@@ -190,9 +229,9 @@ export async function logSet(
       return;
     }
     await db.runAsync(
-      `INSERT INTO set_logs (date, workout_id, set_index, weight) VALUES (?, ?, ?, ?)
-       ON CONFLICT (date, workout_id, set_index) DO UPDATE SET weight = excluded.weight`,
-      [date, workoutId, setIndex, Math.max(0, weight)]
+      `INSERT INTO set_logs (date, workout_id, set_index, weight, difficulty) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT (date, workout_id, set_index) DO UPDATE SET weight = excluded.weight, difficulty = excluded.difficulty`,
+      [date, workoutId, setIndex, Math.max(0, weight), difficulty]
     );
     await db.runAsync('INSERT OR IGNORE INTO plan_entries (date, workout_id) VALUES (?, ?)', [date, workoutId]);
     await db.runAsync('DELETE FROM day_exclusions WHERE date = ? AND workout_id = ?', [date, workoutId]);
@@ -251,6 +290,20 @@ export async function addToRoutine(db: SqlDb, id: string, workoutIds: string[]):
         wid,
         next++,
       ]);
+    }
+  });
+}
+
+/** Saves the plan's new order. Workouts not listed (e.g. deleted ones) keep their place after these. */
+export async function reorderRoutine(db: SqlDb, id: string, workoutIds: string[]): Promise<void> {
+  await db.withTransactionAsync(async () => {
+    const rows = await db.getAllAsync<{ workout_id: string }>(
+      'SELECT workout_id FROM routine_workouts WHERE routine_id = ? ORDER BY position',
+      [id]
+    );
+    const rest = rows.map((r) => r.workout_id).filter((w) => !workoutIds.includes(w));
+    for (const [i, wid] of [...workoutIds, ...rest].entries()) {
+      await db.runAsync('UPDATE routine_workouts SET position = ? WHERE routine_id = ? AND workout_id = ?', [i, id, wid]);
     }
   });
 }

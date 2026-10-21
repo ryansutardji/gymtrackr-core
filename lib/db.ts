@@ -70,6 +70,14 @@ export const MIGRATIONS: string[] = [
   );
   ALTER TABLE plan_entries ADD COLUMN routine_id TEXT REFERENCES routines(id);
   `,
+  // 3: optional "how did it feel?" rating per logged set ('easy' | 'medium' | 'hard').
+  `
+  ALTER TABLE set_logs ADD COLUMN difficulty TEXT;
+  `,
+  // 4: manual order of a day's workouts (drag to reorder). NULL = not reordered.
+  `
+  ALTER TABLE plan_entries ADD COLUMN position INTEGER;
+  `,
 ];
 
 export async function migrate(db: SqlDb): Promise<void> {

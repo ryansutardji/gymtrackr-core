@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, Text, View, StyleSheet } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Screen, ScreenTitle } from '@/components/Screen';
@@ -6,6 +6,7 @@ import { SectionLabel } from '@/components/SectionLabel';
 import { WeekStrip } from '@/components/WeekStrip';
 import { MonthGrid } from '@/components/MonthGrid';
 import { WorkoutCard } from '@/components/WorkoutCard';
+import { SortableList } from '@/components/SortableList';
 import { AddWorkoutSheet, type SheetFilter, type SheetMode } from '@/components/AddWorkoutSheet';
 import { useAppData } from '@/hooks/useAppData';
 import { useSelectedDate } from '@/hooks/useSelectedDate';
@@ -18,7 +19,7 @@ import type { DateKey } from '@/lib/types';
 export default function CalendarScreen() {
   const router = useRouter();
   const app = useAppData();
-  const { workouts, logs, removeFromDay, addToPlan, addRoutineToDay } = app;
+  const { workouts, logs, removeFromDay, addToPlan, addRoutineToDay, reorderDay } = app;
   const { selectedDate, setSelectedDate } = useSelectedDate();
   const today = todayKey();
   const isToday = selectedDate === today;
@@ -27,6 +28,7 @@ export default function CalendarScreen() {
   const [viewMonth, setViewMonth] = useState(() => monthOf(selectedDate));
   // Workout id in the press-and-hold (delete) state, if any.
   const [heldId, setHeldId] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
 
   // Add-workout sheet. Selection lives here so it survives a trip to the Create screen.
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -41,14 +43,13 @@ export default function CalendarScreen() {
   const latestWorkouts = useRef(workouts);
   latestWorkouts.current = workouts;
 
-  const { plans, routines, schedules, exclusions, planSources } = app;
-  const data = useMemo(
-    () => ({ workouts, plans, logs, routines, schedules, exclusions, planSources }),
-    [workouts, plans, logs, routines, schedules, exclusions, planSources]
-  );
+  // The store value is the app data itself, and only changes when that data (or load state) does.
+  const data = app;
   const statusOf = useCallback((d: DateKey) => dayStatus(data, d), [data]);
   const groups = dayGroups(data, selectedDate);
   const planned = groups.flatMap((g) => g.workouts);
+  // One row per workout; the first of each plan's run carries the plan label.
+  const rows = groups.flatMap((g) => g.workouts.map((workout, i) => ({ workout, group: g, first: i === 0 })));
   const completeCount = planned.filter((w) => isComplete(logs, selectedDate, w)).length;
 
   // The hold state belongs to one card on one day — drop it when either changes.
@@ -145,7 +146,7 @@ export default function CalendarScreen() {
   };
 
   return (
-    <Screen onBackgroundPress={() => setHeldId(null)}>
+    <Screen onBackgroundPress={() => setHeldId(null)} scrollEnabled={!dragging}>
       <ScreenTitle
         title={isToday ? 'Today' : formatShortDay(selectedDate)}
         subtitle={formatLongDay(selectedDate)}
@@ -181,27 +182,40 @@ export default function CalendarScreen() {
       </View>
 
       <View style={styles.cards}>
-        {groups.map((g) => (
-          <View key={g.routine?.id ?? 'single'} style={styles.group}>
-            {g.routine && (
-              <Text style={styles.groupLabel} numberOfLines={1}>
-                <Text style={{ color: colors.sage }}>{g.routine.name}</Text>
-                {g.repeatWeekday != null && ` · repeats ${weekdayName(g.repeatWeekday)}s`}
-              </Text>
-            )}
-            {g.workouts.map((w) => (
+        <SortableList
+          items={rows}
+          keyOf={(r) => r.workout.id}
+          labelOf={(r) => r.workout.name}
+          onDragActive={(on) => {
+            setDragging(on);
+            if (on) setHeldId(null);
+          }}
+          onReorder={(list) =>
+            reorderDay(
+              selectedDate,
+              list.map((r) => ({ workoutId: r.workout.id, routineId: r.group.routine?.id }))
+            ).catch((e) => console.error('Failed to reorder day', e))
+          }
+          renderItem={({ workout: w, group: g, first }, handle) => (
+            <View style={styles.group}>
+              {first && g.routine && (
+                <Text style={styles.groupLabel} numberOfLines={1}>
+                  <Text style={{ color: colors.sage }}>{g.routine.name}</Text>
+                  {g.repeatWeekday != null && ` · repeats ${weekdayName(g.repeatWeekday)}s`}
+                </Text>
+              )}
               <WorkoutCard
-                key={w.id}
                 workout={w}
                 done={doneCount(logs, selectedDate, w)}
                 held={heldId === w.id}
                 onPress={() => onCardPress(w.id)}
                 onLongPress={() => onCardLongPress(w.id)}
                 onDelete={() => onDelete(w.id)}
+                handle={rows.length > 1 ? handle : undefined}
               />
-            ))}
-          </View>
-        ))}
+            </View>
+          )}
+        />
         <Pressable
           accessibilityRole="button"
           onPress={openSheet}
@@ -211,7 +225,9 @@ export default function CalendarScreen() {
         </Pressable>
       </View>
 
-      <Text style={styles.hint}>Tap to log · press and hold to remove</Text>
+      <Text style={styles.hint}>
+        {planned.length > 1 ? 'Tap to log · drag ≡ to reorder · hold to remove' : 'Tap to log · press and hold to remove'}
+      </Text>
 
       <AddWorkoutSheet
         visible={sheetOpen}

@@ -148,6 +148,18 @@ describe('Plan page', () => {
     expect((await repo.loadAll(db)).routines[0].workoutIds).toEqual([ids.bench, ids.fly]);
   });
 
+  it('reorders with Move up / Move down on the grip', async () => {
+    const { db } = await open();
+    await act(async () => {
+      fireEvent(screen.getByLabelText('Reorder Overhead press'), 'accessibilityAction', {
+        nativeEvent: { actionName: 'moveUp' },
+      });
+    });
+    await waitFor(async () =>
+      expect((await repo.loadAll(db)).routines[0].workoutIds).toEqual([ids.ohp, ids.bench])
+    );
+  });
+
   it("won't remove the last workout", async () => {
     await open();
     fireEvent(screen.getByRole('button', { name: 'Overhead press' }), 'longPress');
@@ -189,6 +201,29 @@ describe('Plan page', () => {
     expect((await repo.loadAll(db)).routines[0].deletedAt).not.toBeNull();
     await sheetClosed();
     expect(screen.queryByText('Delete Push day?')).toBeNull();
+  });
+});
+
+describe('Calendar: reorder a day', () => {
+  it('moves a card down and keeps the order', async () => {
+    const { db } = await renderWithData(
+      <SelectedDateProvider initial="2026-10-07">
+        <CalendarScreen />
+      </SelectedDateProvider>,
+      async (db) => {
+        await seed(db, false);
+        await repo.addToPlan(db, '2026-10-07', [ids.bench, ids.ohp]);
+      }
+    );
+    expect(screen.getByText('Tap to log · drag ≡ to reorder · hold to remove')).toBeTruthy();
+    await act(async () => {
+      fireEvent(screen.getByLabelText('Reorder Bench press'), 'accessibilityAction', {
+        nativeEvent: { actionName: 'moveDown' },
+      });
+    });
+    await waitFor(async () => expect((await repo.loadAll(db)).plans['2026-10-07']).toEqual([ids.ohp, ids.bench]));
+    const cards = screen.getAllByRole('button', { name: /sets logged$/ }).map((n) => n.props.accessibilityLabel);
+    expect(cards).toEqual(['Overhead press, 0 of 3 sets logged', 'Bench press, 0 of 4 sets logged']);
   });
 });
 

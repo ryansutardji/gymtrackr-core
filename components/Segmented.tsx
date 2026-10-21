@@ -3,7 +3,9 @@ import { colors, fonts } from '@/lib/theme';
 
 type Props<T extends string> = {
   options: readonly T[];
-  value: T;
+  /** null = nothing selected (e.g. an unrated set). */
+  value: T | null;
+  /** Fires on every tap, including the selected option (callers can treat that as "clear"). */
   onChange: (value: T) => void;
   /** Track colour; the active segment uses `activeBg`. Screens: surface/raised. Sheets: row/line. */
   bg?: string;

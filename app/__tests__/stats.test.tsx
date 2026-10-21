@@ -111,4 +111,43 @@ describe('Stats', () => {
     expect(screen.getByRole('button', { name: 'No logged workouts' })).toBeDisabled();
     expect(screen.getByText(/No logged sessions in this range\./)).toBeTruthy();
   });
+
+  describe('set ratings', () => {
+    async function rated() {
+      return renderWithData(
+        <SelectedDateProvider initial="2026-10-07">
+          <StatsScreen />
+        </SelectedDateProvider>,
+        async (db) => {
+          const bench = await repo.createWorkout(db, { name: 'Bench press', group: 'chest', sets: 2, reps: 8 });
+          await repo.logSet(db, '2026-09-29', bench.id, 0, 135, 'hard');
+          await repo.logSet(db, '2026-09-29', bench.id, 1, 135, 'hard');
+          await repo.logSet(db, '2026-10-06', bench.id, 0, 145, 'easy');
+          await repo.logSet(db, '2026-10-06', bench.id, 1, 145);
+        }
+      );
+    }
+
+    it('tags each set in the day details, notes shared weights, and shows the key', async () => {
+      await rated();
+      expect(screen.getByLabelText('felt Easy')).toBeTruthy();
+      expect(screen.getByLabelText('not rated')).toBeTruthy();
+      expect(screen.getByText('Same weight · stacked')).toBeTruthy();
+      expect(screen.getByLabelText(/^Easy, Medium, Hard\. Sets at the same weight · S1 on top/)).toBeTruthy();
+
+      fireEvent.press(screen.getByRole('button', { name: '1Y' }));
+      expect(screen.getByText('Same weight · hardest shown')).toBeTruthy();
+    });
+
+    it('a highlighted set gets its recent rating counts', async () => {
+      await rated();
+      fireEvent.press(screen.getByRole('button', { name: 'Highlight set 1' }));
+      expect(screen.getByText('Last 2 rated · Easy 1 · Hard 1')).toBeTruthy();
+      expect(screen.queryByText('Same weight · stacked')).toBeNull();
+      expect(screen.getByLabelText(/Showing Set 1 only/)).toBeTruthy();
+
+      fireEvent.press(screen.getByRole('button', { name: 'Highlight set 2' }));
+      expect(screen.getByText('Last 1 rated · Hard 1')).toBeTruthy();
+    });
+  });
 });

@@ -4,6 +4,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { SectionLabel } from '@/components/SectionLabel';
 import { WorkoutCard } from '@/components/WorkoutCard';
+import { SortableList } from '@/components/SortableList';
 import { AddWorkoutSheet, type SheetFilter } from '@/components/AddWorkoutSheet';
 import { DeletePlanSheet } from '@/components/DeletePlanSheet';
 import { useAppData } from '@/hooks/useAppData';
@@ -18,10 +19,11 @@ export default function PlanScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const app = useAppData();
-  const { workouts, logs, routines, addToRoutine, removeFromRoutine, stopSchedule } = app;
+  const { workouts, logs, routines, addToRoutine, removeFromRoutine, reorderRoutine, stopSchedule } = app;
   const routine = routines.find((r) => r.id === id && !r.deletedAt);
 
   const [heldId, setHeldId] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
   const [deleting, setDeleting] = useState<Routine | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [selection, setSelection] = useState<string[]>([]);
@@ -95,7 +97,7 @@ export default function PlanScreen() {
   };
 
   return (
-    <Screen onBackgroundPress={() => setHeldId(null)}>
+    <Screen onBackgroundPress={() => setHeldId(null)} scrollEnabled={!dragging}>
       <Pressable accessibilityRole="button" onPress={() => router.back()} hitSlop={8} style={styles.back}>
         <Text style={styles.backText}>‹ Plans</Text>
       </Pressable>
@@ -118,26 +120,38 @@ export default function PlanScreen() {
 
       <SectionLabel style={{ marginTop: 24 }}>Workouts</SectionLabel>
       <View style={styles.cards}>
-        {members.map((w) => (
-          <WorkoutCard
-            key={w.id}
-            workout={w}
-            held={heldId === w.id}
-            onPress={() => setHeldId(null)}
-            onLongPress={
-              canRemove
-                ? () => {
-                    confirmFeedback();
-                    setHeldId(w.id);
-                  }
-                : undefined
-            }
-            onDelete={() => onRemove(w.id)}
-            deleteLabel="Remove"
-            deleteA11yLabel={`Remove ${w.name} from ${routine.name}`}
-            a11yHint={canRemove ? 'Press and hold to remove from this plan.' : undefined}
-          />
-        ))}
+        <SortableList
+          items={members}
+          keyOf={(w) => w.id}
+          labelOf={(w) => w.name}
+          onDragActive={(on) => {
+            setDragging(on);
+            if (on) setHeldId(null);
+          }}
+          onReorder={(list) =>
+            reorderRoutine(routine.id, list.map((w) => w.id)).catch((e) => console.error('Failed to reorder plan', e))
+          }
+          renderItem={(w, handle) => (
+            <WorkoutCard
+              workout={w}
+              held={heldId === w.id}
+              onPress={() => setHeldId(null)}
+              onLongPress={
+                canRemove
+                  ? () => {
+                      confirmFeedback();
+                      setHeldId(w.id);
+                    }
+                  : undefined
+              }
+              onDelete={() => onRemove(w.id)}
+              deleteLabel="Remove"
+              deleteA11yLabel={`Remove ${w.name} from ${routine.name}`}
+              a11yHint={canRemove ? 'Press and hold to remove from this plan.' : undefined}
+              handle={canRemove ? handle : undefined}
+            />
+          )}
+        />
         <Pressable
           accessibilityRole="button"
           onPress={openSheet}
@@ -147,7 +161,7 @@ export default function PlanScreen() {
         </Pressable>
       </View>
       <Text style={styles.hint}>
-        {canRemove ? 'Press and hold to remove' : 'A plan needs at least one workout'}
+        {canRemove ? 'Drag ≡ to reorder · press and hold to remove' : 'A plan needs at least one workout'}
       </Text>
 
       {repeats.length > 0 && (

@@ -3,13 +3,21 @@ import { Keyboard, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, V
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PrimaryButton } from '@/components/PrimaryButton';
+import { Segmented } from '@/components/Segmented';
+import { SectionLabel } from '@/components/SectionLabel';
 import { useAppData } from '@/hooks/useAppData';
 import { firstOpenSet, prefillWeight, previousSession, setsFor, stepWeight } from '@/lib/derive';
 import { formatShortDay } from '@/lib/dates';
 import { UNIT } from '@/lib/format';
 import { confirmFeedback, tapFeedback } from '@/lib/haptics';
 import { colors, fonts, layout, steps } from '@/lib/theme';
-import type { Logs } from '@/lib/types';
+import type { Difficulty, Logs, Ratings } from '@/lib/types';
+
+const RATING_LABELS = ['Easy', 'Medium', 'Hard'] as const;
+type RatingLabel = (typeof RATING_LABELS)[number];
+const LABEL: Record<Difficulty, RatingLabel> = { easy: 'Easy', medium: 'Medium', hard: 'Hard' };
+const toLabel = (d: Difficulty | null): RatingLabel | null => (d ? LABEL[d] : null);
+const toDifficulty = (l: RatingLabel): Difficulty => l.toLowerCase() as Difficulty;
 
 /**
  * Full-screen set logger for one workout on one date (`?date=&workoutId=`).
@@ -20,11 +28,13 @@ export default function LoggerScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { date, workoutId } = useLocalSearchParams<{ date: string; workoutId: string }>();
-  const { workouts, logs, logSet } = useAppData();
+  const { workouts, logs, ratings, logSet } = useAppData();
   const workout = workouts.find((w) => w.id === workoutId && !w.deletedAt);
 
   const [setIndex, setSetIndex] = useState(() => (workout ? firstOpenSet(logs, date, workout) : 0));
   const [value, setValue] = useState(() => String(prefillWeight(logs, date, workoutId, setIndex)));
+  // How the set felt — optional. Shows the saved rating for a logged set, blank otherwise.
+  const [rating, setRating] = useState<Difficulty | null>(() => ratings[date]?.[workoutId]?.[setIndex] ?? null);
   const [saving, setSaving] = useState(false);
 
   // Nothing to log for a workout that no longer exists.
@@ -41,14 +51,26 @@ export default function LoggerScreen() {
   const parsed = Number(value);
   const canLog = value !== '' && !isNaN(parsed) && !saving;
 
+  const currentRatings = ratings[date]?.[workout.id] ?? [];
   const others = current
-    .map((v, i) => (v != null && i !== setIndex ? `S${i + 1} ${v}` : null))
+    .map((v, i) => {
+      if (v == null || i === setIndex) return null;
+      const r = toLabel(currentRatings[i] ?? null);
+      return `S${i + 1} ${v}${r ? ` ${r}` : ''}`;
+    })
     .filter(Boolean)
     .join(' · ');
 
-  const goToSet = (i: number, fromLogs: Logs = logs) => {
+  const goToSet = (i: number, fromLogs: Logs = logs, fromRatings: Ratings = ratings) => {
     setSetIndex(i);
     setValue(String(prefillWeight(fromLogs, date, workout.id, i)));
+    setRating(fromRatings[date]?.[workout.id]?.[i] ?? null);
+  };
+
+  const pickRating = (label: RatingLabel) => {
+    tapFeedback();
+    const d = toDifficulty(label);
+    setRating((cur) => (cur === d ? null : d)); // tap the selected one again to clear
   };
 
   const nudge = (delta: number) => {
@@ -62,7 +84,7 @@ export default function LoggerScreen() {
     const weight = Math.round(Math.max(0, parsed) * 10) / 10;
     setSaving(true);
     try {
-      await logSet(date, workout.id, setIndex, weight);
+      await logSet(date, workout.id, setIndex, weight, rating);
     } catch (e) {
       console.error('Failed to log set', e);
       setSaving(false);
@@ -78,7 +100,13 @@ export default function LoggerScreen() {
     // copy may not have re-rendered yet).
     const day = [...current];
     day[setIndex] = weight;
-    goToSet(setIndex + 1, { ...logs, [date]: { ...logs[date], [workout.id]: day } });
+    const dayRatings = [...currentRatings];
+    dayRatings[setIndex] = rating;
+    goToSet(
+      setIndex + 1,
+      { ...logs, [date]: { ...logs[date], [workout.id]: day } },
+      { ...ratings, [date]: { ...ratings[date], [workout.id]: dayRatings } }
+    );
   };
 
   return (
@@ -163,6 +191,18 @@ export default function LoggerScreen() {
       <Text style={styles.others}>{others}</Text>
 
       <View style={{ flex: 1 }} />
+      <View style={styles.ratingHeader}>
+        <SectionLabel>How did it feel?</SectionLabel>
+        <Text style={styles.ratingHint}>{rating ? 'Tap again to clear' : 'Optional'}</Text>
+      </View>
+      <Segmented
+        options={RATING_LABELS}
+        value={toLabel(rating)}
+        onChange={pickRating}
+        height={44}
+        fontSize={15}
+        style={{ marginTop: 8, marginBottom: 14 }}
+      />
       <PrimaryButton
         label={alreadyLogged ? 'Update set' : isLast ? 'Log set & finish' : 'Log set'}
         disabled={!canLog}
@@ -246,5 +286,7 @@ const styles = StyleSheet.create({
   stepBigText: { fontFamily: fonts.semibold, fontSize: 26, color: colors.text },
   stepSmall: { flex: 1, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   stepSmallText: { fontFamily: fonts.semibold, fontSize: 17, color: colors.text },
+  ratingHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 12 },
+  ratingHint: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted },
   others: { marginTop: 16, minHeight: 18, fontFamily: fonts.regular, fontSize: 13, color: colors.muted, textAlign: 'center' },
 });
